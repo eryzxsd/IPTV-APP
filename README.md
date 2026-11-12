@@ -59,6 +59,7 @@ You can host `dist/` as a plain static site. Without the proxy, only CORS-enable
 
 To publish a release, open **Actions → Release → Run workflow** (or push a `v*` tag). It builds the APK on Linux
 and the EXEs on Windows, then attaches them to a GitHub release. The version comes from `package.json`.
+The release text comes from `.github/release-notes.md`; replace its "What's new" section for each version.
 
 ### Android signing
 
