@@ -1,0 +1,30 @@
+{
+  "name": "iptv-app",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A modern web IPTV player with iptv-org playlists and epgshare01 TV guide.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "start": "node server/index.mjs",
+    "preview": "npm run build && npm start",
+    "typecheck": "tsc -b"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "hls.js": "^1.7.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  }
+}
