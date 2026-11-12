@@ -14,6 +14,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -58,8 +60,8 @@ data class PlaybackState(
     val video: List<TrackOption> = emptyList(),
     /** true when quality is automatic (adaptive). */
     val autoQuality: Boolean = true,
-    /** Height currently being played, e.g. 720. */
-    val currentHeight: Int? = null,
+    /** Standard name of the size being played, e.g. "720p" (for 1216×684). */
+    val currentQuality: String? = null,
     val audio: List<TrackOption> = emptyList(),
     val text: List<TrackOption> = emptyList(),
     val subtitlesOn: Boolean = false,
@@ -103,8 +105,10 @@ class PlayerController(
     val state: StateFlow<PlaybackState> = _state.asStateFlow()
     private var watchdog: Job? = null
     private var sleepJob: Job? = null
-    /** Heights learned from decoded video for variants whose manifest entry has no RESOLUTION. */
-    private val learnedHeights = HashMap<String, Int>()
+    /** Sizes learned from decoded video for variants whose manifest entry has no RESOLUTION. */
+    private val learnedSizes = HashMap<String, Pair<Int, Int>>()
+    /** The variant currently being downloaded (from the media source, not the decoder). */
+    private var currentVariant: Format? = null
     private var autoRetried = false
 
     init {
@@ -150,9 +154,21 @@ class PlayerController(
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (videoSize.height <= 0) return
-                // Remember the real height of the variant that's playing (manifests often omit it).
-                player.videoFormat?.id?.let { learnedHeights[it] = videoSize.height }
-                _state.update { it.copy(currentHeight = videoSize.height) }
+                // Remember the real size of the variant that's playing (manifests often omit it).
+                currentVariant?.let { learnedSizes[variantKey(it)] = videoSize.width to videoSize.height }
+                _state.update { it.copy(currentQuality = QualityLogic.standardName(videoSize.width, videoSize.height)) }
+                refreshTracks()
+            }
+        })
+        player.addAnalyticsListener(object : AnalyticsListener {
+            // The variant ExoPlayer switched to. Its Format is the same one listed in Tracks,
+            // unlike player.videoFormat, which comes from the decoder.
+            override fun onDownstreamFormatChanged(eventTime: AnalyticsListener.EventTime, mediaLoadData: MediaLoadData) {
+                val f = mediaLoadData.trackFormat ?: return
+                if (mediaLoadData.trackType != C.TRACK_TYPE_VIDEO && mediaLoadData.trackType != C.TRACK_TYPE_DEFAULT) return
+                if (f.height <= 0 && f.bitrate <= 0 && f.peakBitrate <= 0) return
+                if (f.sampleMimeType != null && !MimeTypes.isVideo(f.sampleMimeType) && f.height <= 0) return
+                currentVariant = f
                 refreshTracks()
             }
         })
@@ -175,7 +191,8 @@ class PlayerController(
         // Track overrides belong to the previous stream; language preferences and
         // "subtitles off" carry over to the next channel.
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().clearOverrides().build()
-        learnedHeights.clear()
+        learnedSizes.clear()
+        currentVariant = null
         autoRetried = false
         player.setMediaSource(
             DefaultMediaSourceFactory(dataSource)
@@ -250,18 +267,19 @@ class PlayerController(
                 val f = g.getTrackFormat(ti)
                 val id = "$gi:$ti"
                 when (g.type) {
-                    C.TRACK_TYPE_VIDEO -> video += VideoCandidate(id, f.height, rate(f), g.isTrackSelected(ti), f.id)
+                    C.TRACK_TYPE_VIDEO -> video += VideoCandidate(id, f.width, f.height, rate(f), g.isTrackSelected(ti), variantKey(f))
                     C.TRACK_TYPE_AUDIO -> audio += TrackOption(id, trackName(f, "Audio ${audio.size + 1}"), audioDetail(f), g.isTrackSelected(ti))
                     C.TRACK_TYPE_TEXT -> text += TrackOption(id, textName(f, text.size + 1), textDetail(f), g.isTrackSelected(ti))
                 }
             }
         }
-        val videoOptions = QualityLogic.options(video, learnedHeights, player.videoFormat?.id)
+        val videoOptions = QualityLogic.options(video, learnedSizes, currentVariant?.let(::variantKey))
         _state.update {
             it.copy(
                 video = videoOptions,
                 autoQuality = params.overrides.values.none { o -> o.type == C.TRACK_TYPE_VIDEO },
-                currentHeight = player.videoFormat?.height?.takeIf { h -> h > 0 } ?: it.currentHeight,
+                currentQuality = player.videoSize.takeIf { v -> v.height > 0 }?.let { v -> QualityLogic.standardName(v.width, v.height) }
+                    ?: it.currentQuality,
                 audio = audio,
                 text = text,
                 subtitlesOn = !params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) && text.any { t -> t.selected },
@@ -402,6 +420,9 @@ class PlayerController(
             PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
             PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
         )
+
+        /** HLS gives each variant a unique id; the same id appears in Tracks and in load events. */
+        fun variantKey(f: Format): String = f.id ?: "bitrate:${rate(f)}"
 
         fun rate(f: Format): Int = f.bitrate.takeIf { it > 0 } ?: f.peakBitrate.takeIf { it > 0 } ?: f.averageBitrate
 

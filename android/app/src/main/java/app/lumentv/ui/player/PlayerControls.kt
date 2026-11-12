@@ -96,7 +96,7 @@ private fun ControlIcon(icon: ImageVector, label: String, highlighted: Boolean =
 
 @Composable
 private fun QualityChip(playback: PlaybackState, onClick: () -> Unit) {
-    val label = QualityLogic.chipLabel(playback.autoQuality, playback.video, playback.currentHeight, playback.channel?.quality)
+    val label = QualityLogic.chipLabel(playback.autoQuality, playback.video, playback.currentQuality, playback.channel?.quality)
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(8.dp),
@@ -164,7 +164,7 @@ fun PlayerSheetHost(sheet: PlayerSheet?, controller: PlayerController, playback:
                 }
 
                 PlayerSheet.Quality -> {
-                    val now = playback.currentHeight?.let { "${it}p" } ?: playback.channel?.quality
+                    val now = playback.currentQuality ?: playback.channel?.quality
                     if (playback.video.size <= 1) {
                         SheetTitle("Quality", null)
                         Empty(

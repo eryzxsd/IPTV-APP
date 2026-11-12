@@ -14,6 +14,15 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
   On Android TV, sideload it with a file manager or `adb install`.
 - **Windows**: the app isn't code-signed, so SmartScreen may warn you. Click **More info → Run anyway**.
 
+## What's new in 1.2.3
+
+- **Clearer quality names:**
+  - Sizes use familiar names (a 1216×684 stream is **720p**, not "684p").
+  - Streams that don't state their resolutions now show **Highest / High / Medium / Low / Lowest** with the bitrate
+    underneath, instead of bare bitrates. Each switches to its real resolution once it has played.
+- **"Playing now"** now marks the quality Auto is actually using.
+- Bitrates are always written with a dot (3.3 Mbps).
+
 ## What's new in 1.2.2
 
 - **Quality menu fixed:** channels whose stream doesn't declare resolutions (about 1 in 4) now list every quality

@@ -1,6 +1,5 @@
 package app.lumentv
 
-import app.lumentv.data.Health
 import app.lumentv.data.HealthPolicy
 import app.lumentv.ui.player.ErrorPolicy
 import app.lumentv.ui.player.QualityLogic
@@ -12,52 +11,70 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlayerLogicTest {
-    @Test fun variantsWithResolutionAreSortedHighestFirst() {
+    private fun v(id: String, w: Int, h: Int, rate: Int, selected: Boolean = false) = VideoCandidate(id, w, h, rate, selected, key = id)
+
+    @Test fun variantsWithResolutionUseStandardNames() {
         val opts = QualityLogic.options(
-            listOf(
-                VideoCandidate("0:0", 360, 800_000, false, "a"),
-                VideoCandidate("0:1", 1080, 5_000_000, false, "b"),
-                VideoCandidate("0:2", 720, 2_500_000, true, "c"),
-            ),
+            listOf(v("a", 640, 360, 800_000), v("b", 1920, 1080, 5_000_000), v("c", 1216, 684, 2_500_000, true)),
             emptyMap(),
-            playingFormatId = "c",
+            playingKey = "c",
         )
         assertEquals(listOf("1080p", "720p", "360p"), opts.map { it.label })
         assertEquals("2.5 Mbps · Playing now", opts[1].detail)
     }
 
-    @Test fun variantsWithoutResolutionAreKeptAndLabelledByBitrate() {
-        // Many IPTV manifests only declare BANDWIDTH; these used to be dropped, leaving just "Auto".
-        val opts = QualityLogic.options(
-            listOf(
-                VideoCandidate("0:0", -1, 1_200_000, false, "lo"),
-                VideoCandidate("0:1", -1, 4_000_000, false, "hi"),
-            ),
-            emptyMap(),
-            playingFormatId = null,
-        )
-        assertEquals(listOf("4.0 Mbps", "1.2 Mbps"), opts.map { it.label })
+    @Test fun unlabelledVariantsGetRankNamesNotBareBitrates() {
+        // The "Anime x HIDIVE" case: five variants with BANDWIDTH only.
+        val rates = listOf(3_300_000, 2_300_000, 1_600_000, 1_000_000, 640_000)
+        val opts = QualityLogic.options(rates.mapIndexed { i, r -> v("$i", -1, -1, r) }, emptyMap(), playingKey = "1")
+        assertEquals(listOf("Highest", "High", "Medium", "Low", "Lowest"), opts.map { it.label })
+        assertEquals("3.3 Mbps", opts[0].detail)
+        assertEquals("2.3 Mbps · Playing now", opts[1].detail)
+        assertEquals("640 kbps", opts[4].detail)
     }
 
-    @Test fun heightsLearnedFromDecodedVideoAreUsed() {
+    @Test fun learnedSizeReplacesRankName() {
+        val rates = listOf(3_300_000, 2_300_000, 640_000)
         val opts = QualityLogic.options(
-            listOf(VideoCandidate("0:0", -1, 1_200_000, false, "lo"), VideoCandidate("0:1", -1, 4_000_000, false, "hi")),
-            learnedHeights = mapOf("hi" to 1080),
-            playingFormatId = "hi",
+            rates.mapIndexed { i, r -> v("$i", -1, -1, r) },
+            learnedSizes = mapOf("1" to (1216 to 684)),
+            playingKey = "1",
         )
-        assertEquals("1080p", opts[0].label)
-        assertEquals("4.0 Mbps · Playing now", opts[0].detail)
-        assertEquals("1.2 Mbps", opts[1].label)
+        assertEquals(listOf("Highest", "720p", "Lowest"), opts.map { it.label })
+    }
+
+    @Test fun twoUnlabelledVariants() {
+        val opts = QualityLogic.options(listOf(v("a", -1, -1, 900_000), v("b", -1, -1, 3_000_000)), emptyMap(), null)
+        assertEquals(listOf("Highest", "Lowest"), opts.map { it.label })
+    }
+
+    @Test fun standardNames() {
+        assertEquals("720p", QualityLogic.standardName(1216, 684))
+        assertEquals("1080p", QualityLogic.standardName(1920, 800)) // cinema crop
+        assertEquals("1080p", QualityLogic.standardName(1920, 1080))
+        assertEquals("576p", QualityLogic.standardName(720, 576))
+        assertEquals("480p", QualityLogic.standardName(854, 480))
+        assertEquals("360p", QualityLogic.standardName(640, 360))
+        assertEquals("2160p", QualityLogic.standardName(3840, 2160))
+    }
+
+    @Test fun bitrateUsesADotOnEveryPhone() {
+        val default = java.util.Locale.getDefault()
+        try {
+            java.util.Locale.setDefault(java.util.Locale.forLanguageTag("id-ID"))
+            assertEquals("3.3 Mbps", QualityLogic.formatBitrate(3_300_000))
+        } finally {
+            java.util.Locale.setDefault(default)
+        }
     }
 
     @Test fun chipLabel() {
         val two = listOf(TrackOption("a", "1080p", null, false), TrackOption("b", "720p", null, true))
-        assertEquals("Auto · 720p", QualityLogic.chipLabel(true, two, 720, "1080p"))
-        assertEquals("Auto · 1080p", QualityLogic.chipLabel(true, two, null, "1080p")) // before the first frame
+        assertEquals("Auto · 720p", QualityLogic.chipLabel(true, two, "720p", "1080p"))
+        assertEquals("Auto · 1080p", QualityLogic.chipLabel(true, two, null, "1080p"))
         assertEquals("Auto", QualityLogic.chipLabel(true, two, null, null))
-        assertEquals("720p", QualityLogic.chipLabel(false, two, 720, null))
-        assertEquals("576p", QualityLogic.chipLabel(true, emptyList(), 576, "720p")) // single quality: no "Auto"
-        assertEquals("720p", QualityLogic.chipLabel(true, emptyList(), null, "720p"))
+        assertEquals("720p", QualityLogic.chipLabel(false, two, "720p", null))
+        assertEquals("576p", QualityLogic.chipLabel(true, emptyList(), "576p", "720p"))
     }
 
     @Test fun onlyDefiniteErrorsCount() {
@@ -77,9 +94,7 @@ class PlayerLogicTest {
         val twice = HealthPolicy.recordFailure(once, t + 60_000)
         assertTrue(HealthPolicy.isOffline(twice, t + 120_000))
         assertFalse("marks expire", HealthPolicy.isOffline(twice, t + HealthPolicy.EXPIRY_MS + 120_000))
-        // An old failure doesn't stack with a new one.
-        val later = HealthPolicy.recordFailure(once, t + HealthPolicy.EXPIRY_MS + 1)
-        assertEquals(1, later.fails)
+        assertEquals(1, HealthPolicy.recordFailure(once, t + HealthPolicy.EXPIRY_MS + 1).fails)
         assertFalse(HealthPolicy.isOffline(null, t))
     }
 }
