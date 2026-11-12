@@ -86,30 +86,79 @@ data class PlaybackState(
  */
 @UnstableApi
 class PlayerController(
-    context: Context,
+    private val context: Context,
     private val http: OkHttpClient,
     private val scope: CoroutineScope,
     buffer: app.lumentv.data.BufferMode,
+    decoder: app.lumentv.data.DecoderMode,
     private val onHealth: (Channel, Boolean) -> Unit,
 ) {
-    val player: ExoPlayer = ExoPlayer.Builder(context)
-        .setLoadControl(
-            DefaultLoadControl.Builder().apply {
-                when (buffer) {
-                    app.lumentv.data.BufferMode.Fast -> setBufferDurationsMs(2_500, 20_000, 1_000, 2_000)
-                    app.lumentv.data.BufferMode.Balanced -> setBufferDurationsMs(8_000, 30_000, 1_500, 3_000)
-                    app.lumentv.data.BufferMode.Smooth -> setBufferDurationsMs(20_000, 60_000, 3_000, 6_000)
-                }
-            }.build(),
-        )
-        .build()
-        .apply {
-            playWhenReady = true
-            // Subtitles start off; the user turns them on from the CC button.
-            trackSelectionParameters = trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                .build()
+    private var buffer = buffer
+    private var decoder = decoder
+
+    /** The current ExoPlayer. It is rebuilt when the decoder or buffer setting changes. */
+    var player: ExoPlayer = buildPlayer(buffer, decoder)
+        private set
+    private val _playerFlow = MutableStateFlow(player)
+    /** Emits the new player after a rebuild, so views and the media session can switch to it. */
+    val playerFlow: StateFlow<ExoPlayer> = _playerFlow.asStateFlow()
+
+    /** Next/previous channel, for the notification and headset buttons (set by the UI). */
+    var onZap: ((Int) -> Unit)? = null
+
+    private fun buildPlayer(buffer: app.lumentv.data.BufferMode, decoder: app.lumentv.data.DecoderMode): ExoPlayer {
+        val renderers = androidx.media3.exoplayer.DefaultRenderersFactory(context)
+            .setMediaCodecSelector(DecoderPolicy.selector(decoder))
+            // Auto may fall back to another decoder if the first one fails to start.
+            .setEnableDecoderFallback(decoder == app.lumentv.data.DecoderMode.Auto)
+            .apply { if (decoder == app.lumentv.data.DecoderMode.HwPlus) forceEnableMediaCodecAsynchronousQueueing() }
+        // HW+: tunnelled playback (video frames go straight to the display hardware).
+        val selector = androidx.media3.exoplayer.trackselection.DefaultTrackSelector(context).apply {
+            setParameters(buildUponParameters().setTunnelingEnabled(decoder == app.lumentv.data.DecoderMode.HwPlus))
         }
+        return ExoPlayer.Builder(context, renderers)
+            .setTrackSelector(selector)
+            .setLoadControl(
+                DefaultLoadControl.Builder().apply {
+                    when (buffer) {
+                        app.lumentv.data.BufferMode.Fast -> setBufferDurationsMs(2_500, 20_000, 1_000, 2_000)
+                        app.lumentv.data.BufferMode.Balanced -> setBufferDurationsMs(8_000, 30_000, 1_500, 3_000)
+                        app.lumentv.data.BufferMode.Smooth -> setBufferDurationsMs(20_000, 60_000, 3_000, 6_000)
+                    }
+                }.build(),
+            )
+            .setHandleAudioBecomingNoisy(true) // pause when headphones are unplugged
+            .setWakeMode(C.WAKE_MODE_NETWORK) // keep streaming with the screen off (background play)
+            .build()
+            .apply {
+                playWhenReady = true
+                trackSelectionParameters = trackSelectionParameters.buildUpon()
+                    // Subtitles start off; the user turns them on from the CC button.
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .build()
+            }
+    }
+
+    /** Recreates the player with new decoder/buffer settings and restarts the current channel. */
+    private fun rebuild(buffer: app.lumentv.data.BufferMode, decoder: app.lumentv.data.DecoderMode) {
+        this.buffer = buffer
+        this.decoder = decoder
+        val old = player
+        // Keep the user's track choices (subtitles off, languages, max quality); tunnelling comes from the new selector.
+        val params = old.trackSelectionParameters
+        val volume = old.volume
+        old.removeListener(listener)
+        old.removeAnalyticsListener(analytics)
+        old.release()
+        player = buildPlayer(buffer, decoder).also {
+            it.trackSelectionParameters = params
+            it.volume = volume
+            it.addListener(listener)
+            it.addAnalyticsListener(analytics)
+        }
+        _playerFlow.value = player
+        _state.value.channel?.let(::play)
+    }
 
     private val names = DefaultTrackNameProvider(context.resources)
     private val UNKNOWN = context.getString(androidx.media3.ui.R.string.exo_track_unknown)
@@ -132,6 +181,7 @@ class PlayerController(
     fun applyPrefs(p: app.lumentv.data.AppPrefs) {
         val old = appliedPrefs
         appliedPrefs = p
+        if (p.decoder != decoder || p.buffer != buffer) rebuild(p.buffer, p.decoder)
         probeEnabled = p.lookUpResolutions
         jumpToLiveOnResume = p.jumpToLiveOnResume
         if (old == null || old.maxQuality != p.maxQuality) {
@@ -150,8 +200,7 @@ class PlayerController(
         }
     }
 
-    init {
-        player.addListener(object : Player.Listener {
+    private val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
                     watchdog?.cancel()
@@ -198,8 +247,9 @@ class PlayerController(
                 _state.update { it.copy(currentQuality = QualityLogic.standardName(videoSize.width, videoSize.height)) }
                 refreshTracks()
             }
-        })
-        player.addAnalyticsListener(object : AnalyticsListener {
+    }
+
+    private val analytics = object : AnalyticsListener {
             // The variant ExoPlayer switched to. Its Format is the same one listed in Tracks,
             // unlike player.videoFormat, which comes from the decoder.
             override fun onDownstreamFormatChanged(eventTime: AnalyticsListener.EventTime, mediaLoadData: MediaLoadData) {
@@ -210,7 +260,11 @@ class PlayerController(
                 currentVariant = f
                 refreshTracks()
             }
-        })
+    }
+
+    init {
+        player.addListener(listener)
+        player.addAnalyticsListener(analytics)
     }
 
     // ---------------------------------------------------------------- playback
@@ -223,7 +277,16 @@ class PlayerController(
         val dataSource = OkHttpDataSource.Factory(http)
             .setUserAgent(channel.userAgent ?: Repository.USER_AGENT)
             .setDefaultRequestProperties(headers)
-        val item = MediaItem.Builder().setUri(channel.url).apply {
+        val item = MediaItem.Builder().setUri(channel.url)
+            // Shown in the media notification / lock screen when playing in the background.
+            .setMediaMetadata(
+                androidx.media3.common.MediaMetadata.Builder()
+                    .setTitle(channel.name)
+                    .setArtist(channel.groups.joinToString(" · "))
+                    .setArtworkUri(channel.logo.takeIf { it.isNotBlank() }?.let(android.net.Uri::parse))
+                    .build(),
+            )
+            .apply {
             // Many iptv-org streams are HLS behind URLs without a .m3u8 extension.
             if (!PROGRESSIVE.containsMatchIn(channel.url)) setMimeType(MimeTypes.APPLICATION_M3U8)
         }.build()
@@ -479,7 +542,8 @@ class PlayerController(
 
     private fun isDefinite(e: PlaybackException): Boolean = ErrorPolicy.isDefinite(
         httpStatus(e),
-        unsupportedFormat = e.errorCode in UNSUPPORTED_CODES,
+        // With a forced decoder (HW/HW+/SW), "unsupported" is the setting's fault, not the stream's.
+        unsupportedFormat = e.errorCode in UNSUPPORTED_CODES && decoder == app.lumentv.data.DecoderMode.Auto,
     )
 
     private fun describe(e: PlaybackException): String {
@@ -494,9 +558,15 @@ class PlayerController(
         return when (e.errorCode) {
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "Couldn't connect to the stream."
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_DECODING_FAILED -> when (decoder) {
+                app.lumentv.data.DecoderMode.Auto -> "This stream's format isn't supported on this device."
+                app.lumentv.data.DecoderMode.Sw -> "Software decoding can't play this stream. Try Auto in Settings > Playback > Decoder."
+                else -> "Hardware decoding can't play this stream on this device. Try Auto or SW in Settings > Playback > Decoder."
+            }
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
-            PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
-            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED -> "This stream's format isn't supported."
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED -> "This stream's format isn't supported."
             else -> "The stream is offline or unavailable."
         }
     }

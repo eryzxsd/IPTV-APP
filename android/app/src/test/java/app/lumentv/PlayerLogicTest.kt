@@ -1,6 +1,8 @@
 package app.lumentv
 
+import app.lumentv.data.DecoderMode
 import app.lumentv.data.HealthPolicy
+import app.lumentv.ui.player.DecoderPolicy
 import app.lumentv.ui.player.ErrorPolicy
 import app.lumentv.ui.player.QualityLogic
 import app.lumentv.ui.player.TrackOption
@@ -116,5 +118,25 @@ class LivePolicyTest {
         assertFalse("a brief pause just continues", p.shouldJumpToLive(true, true, 3))
         assertFalse("setting off: continue where you paused", p.shouldJumpToLive(false, true, 60))
         assertFalse("not a live stream", p.shouldJumpToLive(true, false, 60))
+    }
+}
+
+class DecoderPolicyTest {
+    private val hw = DecoderPolicy.Codec("c2.qti.avc.decoder", hardware = true, softwareOnly = false)
+    private val sw = DecoderPolicy.Codec("c2.android.avc.decoder", hardware = false, softwareOnly = true)
+    private val video = listOf(hw, sw)
+    private fun pick(mode: DecoderMode, mime: String = "video/avc", list: List<DecoderPolicy.Codec> = video) =
+        DecoderPolicy.filter(mode, mime, list) { it }.map { it.name }
+
+    @Test fun modes() {
+        assertEquals(listOf(hw.name, sw.name), pick(DecoderMode.Auto))
+        assertEquals(listOf(hw.name), pick(DecoderMode.Hw))
+        assertEquals(listOf(hw.name), pick(DecoderMode.HwPlus))
+        assertEquals(listOf(sw.name), pick(DecoderMode.Sw))
+    }
+
+    @Test fun audioIsNeverFiltered() {
+        val aac = listOf(DecoderPolicy.Codec("c2.android.aac.decoder", hardware = false, softwareOnly = true))
+        assertEquals(listOf("c2.android.aac.decoder"), pick(DecoderMode.Hw, "audio/mp4a-latm", aac))
     }
 }

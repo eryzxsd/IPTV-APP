@@ -79,9 +79,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val initialApp: AppPrefs = runBlocking { withTimeoutOrNull(1_500) { prefs.app.first() } } ?: AppPrefs()
     val appPrefs: StateFlow<AppPrefs> = prefs.app.stateIn(viewModelScope, SharingStarted.Eagerly, initialApp)
 
-    val player = PlayerController(app, lumen.http, viewModelScope, initialApp.buffer) { ch, ok ->
-        viewModelScope.launch { prefs.setHealth(ch.id, ok) }
-    }
+    /** Shared with the background playback service (owned by the app, not this screen). */
+    val player: PlayerController = lumen.playerController
 
     val groups: StateFlow<List<Pair<String, Int>>> = channels.map { list ->
         list.flatMap { it.groups }.groupingBy { it }.eachCount().toList()
@@ -148,6 +147,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch { appPrefs.collect(player::applyPrefs) }
+        player.onZap = { zap(it) }
         viewModelScope.launch {
             settings.map { it.playlists }.distinctUntilChanged().collect { loadChannels(it, force = false) }
         }
@@ -234,6 +234,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
-        player.release()
+        // The player belongs to the app: it may keep playing in the background.
+        player.onZap = null
     }
 }

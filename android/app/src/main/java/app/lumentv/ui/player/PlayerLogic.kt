@@ -116,3 +116,26 @@ object LivePolicy {
     fun shouldJumpToLive(enabled: Boolean, isLive: Boolean, secondsBehind: Long) =
         enabled && isLive && !isAtLiveEdge(secondsBehind)
 }
+
+/** Player > Decoder: which video decoders ExoPlayer may use. */
+object DecoderPolicy {
+    /** Codec facts the choice depends on (kept separate from MediaCodecInfo so it can be unit-tested). */
+    data class Codec(val name: String, val hardware: Boolean, val softwareOnly: Boolean)
+
+    /** Filters the decoders for one MIME type. Audio is never filtered (audio decoders are software). */
+    fun <T> filter(mode: app.lumentv.data.DecoderMode, mimeType: String, codecs: List<T>, facts: (T) -> Codec): List<T> {
+        if (!androidx.media3.common.MimeTypes.isVideo(mimeType)) return codecs
+        return when (mode) {
+            app.lumentv.data.DecoderMode.Auto -> codecs
+            app.lumentv.data.DecoderMode.Hw, app.lumentv.data.DecoderMode.HwPlus -> codecs.filter { facts(it).hardware && !facts(it).softwareOnly }
+            app.lumentv.data.DecoderMode.Sw -> codecs.filter { facts(it).softwareOnly }
+        }
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    fun selector(mode: app.lumentv.data.DecoderMode) =
+        androidx.media3.exoplayer.mediacodec.MediaCodecSelector { mimeType, requiresSecure, requiresTunneling ->
+            val all = androidx.media3.exoplayer.mediacodec.MediaCodecUtil.getDecoderInfos(mimeType, requiresSecure, requiresTunneling)
+            filter(mode, mimeType, all) { Codec(it.name, it.hardwareAccelerated, it.softwareOnly) }
+        }
+}

@@ -1,6 +1,6 @@
 name: Release
 
-# Builds the Android APK and the Windows EXEs and publishes them as a GitHub release.
+# Builds the Android APK and publishes it as a GitHub release. (The Windows app is discontinued.)
 # Run it from the Actions tab ("Run workflow"), or push a tag like v1.2.0.
 on:
   workflow_dispatch:
@@ -73,27 +73,9 @@ jobs:
           path: out/*.apk
           if-no-files-found: error
 
-  windows:
-    name: Windows EXE
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - run: npx electron-builder --win --x64 --publish never
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows
-          path: release/*.exe
-          if-no-files-found: error
-
   release:
     name: Publish release
-    needs: [android, windows]
+    needs: [android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

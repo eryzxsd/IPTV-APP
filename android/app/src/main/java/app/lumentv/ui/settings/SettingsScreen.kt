@@ -31,7 +31,10 @@ import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.Contrast
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
@@ -77,6 +80,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lumentv.BuildConfig
 import app.lumentv.data.AppPrefs
 import app.lumentv.data.BufferMode
+import app.lumentv.data.ClockMode
+import app.lumentv.data.DecoderMode
 import app.lumentv.data.LoadState
 import app.lumentv.data.Sources
 import app.lumentv.ui.MainViewModel
@@ -99,6 +104,10 @@ fun SettingsScreen(vm: MainViewModel, contentPadding: PaddingValues) {
     var customPlaylist by remember(saved) { mutableStateOf(saved.playlists.filter { u -> Sources.PLAYLISTS.none { it.url == u } }.joinToString("\n")) }
     var customEpg by remember(saved) { mutableStateOf(saved.customEpgUrls.joinToString("\n")) }
     var confirm by remember { mutableStateOf<Confirm?>(null) }
+    // The media notification for background play needs this on Android 13+ (playback works either way).
+    val notificationPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { }
     val uri = LocalUriHandler.current
     fun set(a: AppPrefs) = vm.saveApp(a)
 
@@ -124,7 +133,25 @@ fun SettingsScreen(vm: MainViewModel, contentPadding: PaddingValues) {
                 selected = app.maxQuality,
             ) { set(app.copy(maxQuality = it)) }
             Choice(
-                Icons.Rounded.WifiTethering, "Buffering", app.buffer.detail + " · applies next time the app starts",
+                Icons.Rounded.Memory, "Decoder", app.decoder.detail,
+                options = DecoderMode.entries.map { it to it.label },
+                selected = app.decoder,
+            ) { set(app.copy(decoder = it)) }
+            Toggle(
+                Icons.Rounded.Headphones, "Play in background",
+                "Keep the sound playing when you leave the app or lock the screen, with controls in the notification",
+                app.playInBackground,
+            ) { on ->
+                if (on && Build.VERSION.SDK_INT >= 33) notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                set(app.copy(playInBackground = on))
+            }
+            Choice(
+                Icons.Rounded.Schedule, "Show clock", null,
+                options = ClockMode.entries.map { it to it.label },
+                selected = app.clock,
+            ) { set(app.copy(clock = it)) }
+            Choice(
+                Icons.Rounded.WifiTethering, "Buffering", app.buffer.detail,
                 options = BufferMode.entries.map { it to it.label },
                 selected = app.buffer,
             ) { set(app.copy(buffer = it)) }

@@ -64,9 +64,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import app.lumentv.data.ClockMode
 import app.lumentv.ui.home.recommendationItems
 import app.lumentv.ui.home.FeaturedCard
 import app.lumentv.ui.components.LoadingBar
@@ -287,6 +289,8 @@ private fun BoxScope.VideoBox(
     var controls by remember { mutableStateOf(true) }
     var poke by remember { mutableIntStateOf(0) }
     var sheet by remember { mutableStateOf<PlayerSheet?>(null) }
+    val exo by vm.player.playerFlow.collectAsStateWithLifecycle()
+    val app by vm.appPrefs.collectAsStateWithLifecycle()
     val activity = LocalContext.current as? Activity
     val pip = rememberPip(activity)
     LaunchedEffect(controls, poke, playback.isPlaying, sheet) {
@@ -330,7 +334,7 @@ private fun BoxScope.VideoBox(
             }
         },
         update = {
-            it.player = vm.player.player
+            it.player = exo // follows a rebuilt player (Settings > Decoder)
             it.resizeMode = playback.aspect.resizeMode
         },
         modifier = Modifier
@@ -398,6 +402,10 @@ private fun BoxScope.VideoBox(
                         Text("${fmtTime(now.start)} – ${fmtTime(now.stop)} · ${now.title}", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
+                // Both clock modes show it with the controls; "Always" also keeps it on the video when they hide.
+                if (app.clock != ClockMode.Off) {
+                    PlayerClock(Modifier.padding(horizontal = 8.dp))
+                }
                 if (fullscreen) {
                     IconButton(onClick = { vm.browsing.value = true }) {
                         Icon(Icons.AutoMirrored.Rounded.List, "Browse channels", tint = Color.White)
@@ -447,6 +455,18 @@ private fun BoxScope.VideoBox(
                 }
             }
         }
+    }
+    // Settings > Show clock > Always: a small clock on the video, even when the controls are hidden.
+    if (app.clock == ClockMode.Always && !inPip && !show) {
+        PlayerClock(
+            Modifier
+                .align(Alignment.TopEnd)
+                .then(if (fullscreen) Modifier.safeDrawingPadding() else Modifier)
+                .padding(12.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.Black.copy(alpha = 0.45f))
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+        )
     }
     if (fullscreen && !inPip) ChannelPanel(vm, panelOpen, onClose = { vm.browsing.value = false })
     PlayerSheetHost(sheet, vm.player, playback, onSheet = { sheet = it; poke++ })
@@ -596,4 +616,16 @@ private fun ScheduleRow(p: Programme, live: Boolean) {
         }
         Text(fmtDuration(p.stop - p.start), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp))
     }
+}
+
+/** Current time, updated each minute. */
+@Composable
+private fun PlayerClock(modifier: Modifier = Modifier) {
+    val time by produceState(System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(60_000 - value % 60_000 + 50) // tick right after the minute changes
+        }
+    }
+    Text(fmtTime(time), color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = modifier)
 }

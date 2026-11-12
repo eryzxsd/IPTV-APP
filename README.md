@@ -26,7 +26,7 @@ A modern web IPTV player. It loads the **[iptv-org](https://github.com/iptv-org/
 
 ## Download
 
-Get the Android APK (phones, tablets, Android TV) and the Windows installer or portable EXE from the
+Get the Android APK (phones, tablets, Android TV) from the
 [Releases](https://github.com/eryzxsd/IPTV-APP/releases) page.
 
 ## Run it
@@ -54,11 +54,11 @@ You can host `dist/` as a plain static site. Without the proxy, only CORS-enable
 
 | Platform | How it works | Build locally |
 | --- | --- | --- |
-| Windows / macOS / Linux | Electron shell (`desktop/main.mjs`) running the same local server and proxy as `npm start` | `npm run build:win` (or `npx electron-builder --mac` / `--linux`) |
+| Windows / macOS / Linux | **Discontinued**, no longer released. The Electron shell (`desktop/main.mjs`) is still in the repo and can be built with `npm run build:win` | n/a |
 | Android & Android TV | Native app in Kotlin + Jetpack Compose + Material 3, with Media3/ExoPlayer for playback (`android/`) | `cd android && ./gradlew assembleRelease` (needs the Android SDK, platform 37) |
 
 To publish a release, open **Actions → Release → Run workflow** (or push a `v*` tag). It builds the APK on Linux
-and the EXEs on Windows, then attaches them to a GitHub release. The version comes from `package.json`.
+and attaches it to a GitHub release. The version comes from `package.json`.
 The release text comes from `.github/release-notes.md`; replace its "What's new" section for each version.
 
 ### Android signing
@@ -95,9 +95,9 @@ The Android app is fully native and doesn't use the web code:
 server/proxy.mjs        CORS proxy (shared by Vite dev server and production server)
 server/app.mjs          static server + proxy (shared by npm start and the desktop app)
 server/index.mjs        `npm start` entry point
-desktop/main.mjs        Electron main process (Windows/macOS/Linux app)
+desktop/main.mjs        Electron main process (discontinued Windows/macOS/Linux app)
 android/                Android / Android TV app (Kotlin, Compose, Material 3, Media3)
-.github/workflows/      release workflow (APK + EXE)
+.github/workflows/      release workflow (Android APK)
 src/lib/m3u.ts          M3U parser
 src/lib/epg.worker.ts   streaming XMLTV(.gz) parser in a Web Worker
 src/lib/hooks.ts        playlist / EPG loading, caching, local storage

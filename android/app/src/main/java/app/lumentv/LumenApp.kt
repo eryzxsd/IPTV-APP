@@ -10,6 +10,8 @@ import coil3.disk.DiskCache
 import coil3.disk.directory
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import okhttp3.Cache
 import okhttp3.OkHttpClient
 import java.io.File
@@ -32,6 +34,23 @@ class LumenApp : Application(), SingletonImageLoader.Factory {
     }
     val repository by lazy { Repository(this, http) }
     val prefs by lazy { Prefs(this) }
+
+    /** App-wide scope for the player (it outlives screens when playing in the background). */
+    val appScope = kotlinx.coroutines.MainScope()
+
+    /**
+     * The player lives in the app, not a screen, so the background playback service and
+     * the UI share it. Created on first use with the saved decoder/buffer settings.
+     */
+    @get:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    val playerController by lazy {
+        val initial = kotlinx.coroutines.runBlocking {
+            kotlinx.coroutines.withTimeoutOrNull(1_500) { prefs.app.first() }
+        } ?: app.lumentv.data.AppPrefs()
+        app.lumentv.ui.player.PlayerController(this, http, appScope, initial.buffer, initial.decoder) { ch, ok ->
+            appScope.launch { prefs.setHealth(ch.id, ok) }
+        }
+    }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)

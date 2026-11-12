@@ -178,4 +178,21 @@ class ScreenshotTest {
         rule.mainClock.advanceTimeBy(1_000)
         shot("15-settings-unsaved-and-failure")
     }
+
+    @Test fun clockAndPlaybackSettings() {
+        waitForData()
+        val vm = rule.activity.vm
+        rule.onAllNodesWithText("Settings").onFirst().performClick()
+        rule.mainClock.advanceTimeBy(1_000)
+        shot("16-settings-playback")
+        rule.activity.runOnUiThread { vm.saveApp(vm.appPrefs.value.copy(clock = app.lumentv.data.ClockMode.Always)) }
+        rule.waitUntil(10_000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            vm.appPrefs.value.clock == app.lumentv.data.ClockMode.Always
+        }
+        rule.onAllNodesWithText("Home").onFirst().performClick()
+        playNewsChannel()
+        rule.mainClock.advanceTimeBy(5_000) // let the controls hide
+        shot("17-clock-always")
+    }
 }

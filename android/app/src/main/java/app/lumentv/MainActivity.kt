@@ -16,6 +16,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.core.util.Consumer
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import app.lumentv.ui.LumenNav
 import app.lumentv.ui.MainViewModel
 import app.lumentv.ui.theme.LumenTheme
@@ -33,6 +37,12 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
+        // Follow the Play in background setting while the app is open.
+        lifecycleScope.launch {
+            vm.appPrefs.map { it.playInBackground }.distinctUntilChanged().collect { on ->
+                if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) connectSession(on)
+            }
+        }
         addOnPictureInPictureModeChangedListener(Consumer<PictureInPictureModeChangedInfo> { inPip = it.isInPictureInPictureMode })
         setContent {
             val app by vm.appPrefs.collectAsState()
@@ -50,10 +60,35 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var sessionController: com.google.common.util.concurrent.ListenableFuture<androidx.media3.session.MediaController>? = null
+
+    /**
+     * Play in background: connecting to [PlaybackService] starts it; Media3 then shows the media
+     * notification and keeps the service in the foreground while playing.
+     */
+    private fun connectSession(enabled: Boolean) {
+        if (enabled && sessionController == null) {
+            val token = androidx.media3.session.SessionToken(this, android.content.ComponentName(this, PlaybackService::class.java))
+            sessionController = androidx.media3.session.MediaController.Builder(this, token).buildAsync()
+        } else if (!enabled) {
+            sessionController?.let { androidx.media3.session.MediaController.releaseFuture(it) }
+            sessionController = null
+            stopService(android.content.Intent(this, PlaybackService::class.java))
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        connectSession(vm.appPrefs.value.playInBackground)
+    }
+
     override fun onStop() {
         super.onStop()
+        // Unbind; if playing in the background the service keeps running on its own.
+        sessionController?.let { androidx.media3.session.MediaController.releaseFuture(it) }
+        sessionController = null
         // Don't keep streaming audio in the background (unless we're in PiP).
-        if (!inPip && !isChangingConfigurations) vm.player.player.pause()
+        if (!inPip && !isChangingConfigurations && !vm.appPrefs.value.playInBackground) vm.player.player.pause()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {

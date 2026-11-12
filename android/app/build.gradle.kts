@@ -105,6 +105,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
+    implementation("androidx.media3:media3-session:1.11.1")
 
     implementation("com.squareup.okhttp3:okhttp:5.5.1")
     implementation("io.coil-kt.coil3:coil-compose:3.6.3")

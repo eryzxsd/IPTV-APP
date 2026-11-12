@@ -42,11 +42,28 @@ enum class BufferMode(val label: String, val detail: String) {
     Smooth("Smoother playback", "Takes longer to start, fewer pauses"),
 }
 
+enum class DecoderMode(val label: String, val detail: String) {
+    Auto("Auto", "Hardware, falling back to software when needed (recommended)"),
+    Hw("HW", "Hardware decoders only"),
+    HwPlus("HW+", "Hardware with tunnelled playback and async decoding: lowest CPU use, best on Android TV"),
+    Sw("SW", "Software decoders only: slower, but works around buggy hardware decoders"),
+}
+
+enum class ClockMode(val label: String) {
+    Off("Off"),
+    WithControls("With player controls"),
+    Always("Always on the video"),
+}
+
 /** App options from Settings (playback, channels, guide, appearance). */
 data class AppPrefs(
     /** Highest resolution Auto may pick; 0 = no limit. */
     val maxQuality: Int = 0,
     val buffer: BufferMode = BufferMode.Balanced,
+    val decoder: DecoderMode = DecoderMode.Auto,
+    /** Keep playing (with a media notification) when leaving the app or locking the screen. */
+    val playInBackground: Boolean = false,
+    val clock: ClockMode = ClockMode.Off,
     val subtitlesByDefault: Boolean = false,
     /** AspectMode name. */
     val defaultAspect: String = "Fit",
@@ -77,6 +94,9 @@ class Prefs(private val context: Context) {
         val hideOffline = booleanPreferencesKey("hide_offline")
         val maxQuality = intPreferencesKey("max_quality")
         val buffer = stringPreferencesKey("buffer")
+        val decoder = stringPreferencesKey("decoder")
+        val background = booleanPreferencesKey("play_in_background")
+        val clock = stringPreferencesKey("clock")
         val subsDefault = booleanPreferencesKey("subs_default")
         val aspect = stringPreferencesKey("default_aspect")
         val autoPip = booleanPreferencesKey("auto_pip")
@@ -117,6 +137,9 @@ class Prefs(private val context: Context) {
         AppPrefs(
             maxQuality = p[K.maxQuality] ?: d.maxQuality,
             buffer = p[K.buffer]?.let { b -> BufferMode.entries.firstOrNull { it.name == b } } ?: d.buffer,
+            decoder = p[K.decoder]?.let { v -> DecoderMode.entries.firstOrNull { it.name == v } } ?: d.decoder,
+            playInBackground = p[K.background] ?: d.playInBackground,
+            clock = p[K.clock]?.let { v -> ClockMode.entries.firstOrNull { it.name == v } } ?: d.clock,
             subtitlesByDefault = p[K.subsDefault] ?: d.subtitlesByDefault,
             defaultAspect = p[K.aspect] ?: d.defaultAspect,
             autoPip = p[K.autoPip] ?: d.autoPip,
@@ -133,6 +156,9 @@ class Prefs(private val context: Context) {
     suspend fun saveApp(a: AppPrefs) = context.dataStore.edit {
         it[K.maxQuality] = a.maxQuality
         it[K.buffer] = a.buffer.name
+        it[K.decoder] = a.decoder.name
+        it[K.background] = a.playInBackground
+        it[K.clock] = a.clock.name
         it[K.subsDefault] = a.subtitlesByDefault
         it[K.aspect] = a.defaultAspect
         it[K.autoPip] = a.autoPip
@@ -151,7 +177,7 @@ class Prefs(private val context: Context) {
 
     /** Restores every setting to its default; favorites and history are kept. */
     suspend fun resetSettings() = context.dataStore.edit { p ->
-        listOf(K.playlists, K.epgCodes, K.customEpg, K.epgEnabled, K.hideOffline, K.maxQuality, K.buffer, K.subsDefault, K.aspect,
+        listOf(K.playlists, K.epgCodes, K.customEpg, K.epgEnabled, K.hideOffline, K.maxQuality, K.buffer, K.decoder, K.background, K.clock, K.subsDefault, K.aspect,
             K.autoPip, K.resumeLast, K.lookUp, K.jumpLive, K.sortAz, K.guideHours, K.dynamic, K.black).forEach { p.remove(it) }
     }
 
