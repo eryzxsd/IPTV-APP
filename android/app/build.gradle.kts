@@ -27,12 +27,15 @@ android {
     signingConfigs {
         create("release") {
             // Stable signing via env vars (see README); otherwise falls back to the debug key.
-            val ks = System.getenv("ANDROID_KEYSTORE_FILE")
-            if (!ks.isNullOrBlank() && file(ks).exists()) {
+            // CI passes unset secrets as empty strings, so blank counts as "not set".
+            fun env(name: String) = System.getenv(name)?.takeIf { it.isNotBlank() }
+            val ks = env("ANDROID_KEYSTORE_FILE")
+            if (ks != null && file(ks).exists()) {
                 storeFile = file(ks)
-                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                storePassword = env("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = env("ANDROID_KEY_ALIAS") ?: "lumentv"
+                // PKCS12 keystores use the store password for the key too.
+                keyPassword = env("ANDROID_KEY_PASSWORD") ?: env("ANDROID_KEYSTORE_PASSWORD")
             }
         }
     }
