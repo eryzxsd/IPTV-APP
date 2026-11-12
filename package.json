@@ -1,7 +1,7 @@
 {
   "name": "iptv-app",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.4.1",
   "type": "module",
   "description": "A modern web IPTV player with iptv-org playlists and epgshare01 TV guide.",
   "scripts": {

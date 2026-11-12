@@ -14,17 +14,10 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
   On Android TV, sideload it with a file manager or `adb install`.
 - **Windows**: the app isn't code-signed, so SmartScreen may warn you. Click **More info → Run anyway**.
 
-## What's new in 1.4.0
+## What's new in 1.4.1
 
-- **New Home tab**, now the first screen, built around the main player:
-  - The video sits at the top with all its controls (subtitles, audio, quality, more, fullscreen).
-  - Below it: what's on now, Up next with the full schedule, and recommendations.
-  - Picking a channel anywhere (Channels, Guide, mini player) plays it on Home.
-- **Recommendations**, worked out on your phone from what you watch and your favorites (nothing is sent anywhere):
-  - Rows: Recommended for you, Because you watched…, On now, Continue watching, Your favorites, and rows for
-    your top categories.
-  - New users get picks for their country to start with.
-  - Each row brings different channels, duplicate regional feeds are merged, and offline channels are skipped.
-  - When nothing is playing, Home shows a featured pick with **Watch now**.
-- **Tablets and Android TV** get a wide Home: the video and its details side by side, with recommendations
-  below. The fullscreen button (or Guide/Menu on a remote) goes fullscreen.
+- **Play after pause takes you back to live.** Pausing a live channel used to resume from where you paused, leaving
+  you behind the broadcast. Now pressing play jumps to the live broadcast. A very short pause (a few seconds)
+  just continues. If you'd rather pick up where you paused, turn off **Settings → Playback → Jump to live when resuming**.
+- The **LIVE / GO LIVE** badge is more accurate: streams that normally play a little behind the edge
+  no longer show "GO LIVE" while you're watching live.

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Contrast
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.PlayCircle
@@ -128,6 +129,11 @@ fun SettingsScreen(vm: MainViewModel, contentPadding: PaddingValues) {
                 options = AspectMode.entries.map { it.name to it.label },
                 selected = app.defaultAspect,
             ) { set(app.copy(defaultAspect = it)) }
+            Toggle(
+                Icons.Rounded.LiveTv, "Jump to live when resuming",
+                "Pressing play after a pause takes you back to the live broadcast. Turn off to continue where you paused.",
+                app.jumpToLiveOnResume,
+            ) { set(app.copy(jumpToLiveOnResume = it)) }
             Toggle(Icons.Rounded.PictureInPictureAlt, "Picture-in-picture when leaving", "Keep watching in a small window when you go home", app.autoPip) {
                 set(app.copy(autoPip = it))
             }

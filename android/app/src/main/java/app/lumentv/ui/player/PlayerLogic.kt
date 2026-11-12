@@ -98,3 +98,21 @@ object ErrorPolicy {
         else -> httpStatus in 400..499
     }
 }
+
+object LivePolicy {
+    /** Within this many seconds of the normal live position counts as "live". */
+    const val LIVE_SLACK_S = 8L
+
+    /**
+     * Seconds behind the stream's normal live position. Players deliberately stay a few
+     * segments behind the very edge ([targetOffsetMs]), so that part doesn't count.
+     */
+    fun secondsBehind(currentOffsetMs: Long, targetOffsetMs: Long): Long =
+        ((currentOffsetMs - maxOf(0L, targetOffsetMs)) / 1000).coerceAtLeast(0)
+
+    fun isAtLiveEdge(secondsBehind: Long) = secondsBehind <= LIVE_SLACK_S
+
+    /** Pressing play after a pause: go back to live unless the user prefers to resume where they paused. */
+    fun shouldJumpToLive(enabled: Boolean, isLive: Boolean, secondsBehind: Long) =
+        enabled && isLive && !isAtLiveEdge(secondsBehind)
+}

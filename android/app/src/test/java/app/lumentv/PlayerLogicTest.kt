@@ -98,3 +98,23 @@ class PlayerLogicTest {
         assertFalse(HealthPolicy.isOffline(null, t))
     }
 }
+
+class LivePolicyTest {
+    @Test fun behindIsMeasuredFromTheNormalLivePosition() {
+        // Players sit ~18 s behind the edge on purpose (3 x 6 s segments): that is "live".
+        assertEquals(0, app.lumentv.ui.player.LivePolicy.secondsBehind(18_000, 18_000))
+        assertTrue(app.lumentv.ui.player.LivePolicy.isAtLiveEdge(app.lumentv.ui.player.LivePolicy.secondsBehind(22_000, 18_000)))
+        // Paused for a minute: 60 s behind.
+        assertEquals(60, app.lumentv.ui.player.LivePolicy.secondsBehind(78_000, 18_000))
+        // Unknown target offset: measure from the edge.
+        assertEquals(30, app.lumentv.ui.player.LivePolicy.secondsBehind(30_000, -1))
+    }
+
+    @Test fun resumeJumpsToLiveOnlyWhenBehindAndEnabled() {
+        val p = app.lumentv.ui.player.LivePolicy
+        assertTrue(p.shouldJumpToLive(enabled = true, isLive = true, secondsBehind = 60))
+        assertFalse("a brief pause just continues", p.shouldJumpToLive(true, true, 3))
+        assertFalse("setting off: continue where you paused", p.shouldJumpToLive(false, true, 60))
+        assertFalse("not a live stream", p.shouldJumpToLive(true, false, 60))
+    }
+}

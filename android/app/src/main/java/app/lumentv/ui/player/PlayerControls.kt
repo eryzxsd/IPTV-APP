@@ -123,7 +123,7 @@ fun LiveIndicator(controller: PlayerController) {
             delay(1_000)
         }
     }
-    val atEdge = behind < 20
+    val atEdge = LivePolicy.isAtLiveEdge(behind)
     Row(
         Modifier
             .clip(RoundedCornerShape(6.dp))

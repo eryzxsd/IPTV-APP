@@ -133,6 +133,7 @@ class PlayerController(
         val old = appliedPrefs
         appliedPrefs = p
         probeEnabled = p.lookUpResolutions
+        jumpToLiveOnResume = p.jumpToLiveOnResume
         if (old == null || old.maxQuality != p.maxQuality) {
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().apply {
                 if (p.maxQuality > 0) setMaxVideoSize(Int.MAX_VALUE, p.maxQuality) else clearVideoSizeConstraints()
@@ -262,16 +263,32 @@ class PlayerController(
     }
 
     fun togglePlay() {
-        if (player.isPlaying) player.pause() else {
-            if (player.playbackState == Player.STATE_IDLE) retry() else player.play()
+        if (player.isPlaying) {
+            player.pause()
+            return
+        }
+        when {
+            player.playbackState == Player.STATE_IDLE -> retry()
+            // Live TV: resuming after a pause goes back to the live broadcast (Settings can turn this off).
+            LivePolicy.shouldJumpToLive(jumpToLiveOnResume, player.isCurrentMediaItemLive, liveOffsetSeconds()) -> goLive()
+            else -> player.play()
         }
     }
 
-    /** Seconds behind the live edge (0 for non-live streams). */
+    /** Settings > Jump to live when resuming. */
+    var jumpToLiveOnResume = true
+
+    /** Seconds behind the stream's normal live position (0 for non-live streams or when at live). */
     fun liveOffsetSeconds(): Long {
         if (!player.isCurrentMediaItemLive) return 0
         val off = player.currentLiveOffset
-        return if (off == C.TIME_UNSET) 0 else off / 1000
+        if (off == C.TIME_UNSET) return 0
+        val target = runCatching {
+            val tl = player.currentTimeline
+            if (tl.isEmpty) C.TIME_UNSET
+            else tl.getWindow(player.currentMediaItemIndex, androidx.media3.common.Timeline.Window()).liveConfiguration?.targetOffsetMs ?: C.TIME_UNSET
+        }.getOrDefault(C.TIME_UNSET)
+        return LivePolicy.secondsBehind(off, if (target == C.TIME_UNSET) 0 else target)
     }
 
     fun goLive() {

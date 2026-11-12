@@ -53,6 +53,8 @@ data class AppPrefs(
     val autoPip: Boolean = true,
     val resumeLastChannel: Boolean = false,
     val lookUpResolutions: Boolean = true,
+    /** Pressing play after a pause returns to the live broadcast instead of where you paused. */
+    val jumpToLiveOnResume: Boolean = true,
     val sortAlphabetically: Boolean = false,
     val guideRefreshHours: Int = 4,
     val dynamicColor: Boolean = false,
@@ -80,6 +82,7 @@ class Prefs(private val context: Context) {
         val autoPip = booleanPreferencesKey("auto_pip")
         val resumeLast = booleanPreferencesKey("resume_last")
         val lookUp = booleanPreferencesKey("look_up_resolutions")
+        val jumpLive = booleanPreferencesKey("jump_to_live")
         val sortAz = booleanPreferencesKey("sort_az")
         val guideHours = intPreferencesKey("guide_refresh_hours")
         val dynamic = booleanPreferencesKey("dynamic_color")
@@ -119,6 +122,7 @@ class Prefs(private val context: Context) {
             autoPip = p[K.autoPip] ?: d.autoPip,
             resumeLastChannel = p[K.resumeLast] ?: d.resumeLastChannel,
             lookUpResolutions = p[K.lookUp] ?: d.lookUpResolutions,
+            jumpToLiveOnResume = p[K.jumpLive] ?: d.jumpToLiveOnResume,
             sortAlphabetically = p[K.sortAz] ?: d.sortAlphabetically,
             guideRefreshHours = p[K.guideHours] ?: d.guideRefreshHours,
             dynamicColor = p[K.dynamic] ?: d.dynamicColor,
@@ -134,6 +138,7 @@ class Prefs(private val context: Context) {
         it[K.autoPip] = a.autoPip
         it[K.resumeLast] = a.resumeLastChannel
         it[K.lookUp] = a.lookUpResolutions
+        it[K.jumpLive] = a.jumpToLiveOnResume
         it[K.sortAz] = a.sortAlphabetically
         it[K.guideHours] = a.guideRefreshHours
         it[K.dynamic] = a.dynamicColor
@@ -147,7 +152,7 @@ class Prefs(private val context: Context) {
     /** Restores every setting to its default; favorites and history are kept. */
     suspend fun resetSettings() = context.dataStore.edit { p ->
         listOf(K.playlists, K.epgCodes, K.customEpg, K.epgEnabled, K.hideOffline, K.maxQuality, K.buffer, K.subsDefault, K.aspect,
-            K.autoPip, K.resumeLast, K.lookUp, K.sortAz, K.guideHours, K.dynamic, K.black).forEach { p.remove(it) }
+            K.autoPip, K.resumeLast, K.lookUp, K.jumpLive, K.sortAz, K.guideHours, K.dynamic, K.black).forEach { p.remove(it) }
     }
 
     suspend fun saveSettings(s: UserSettings) = context.dataStore.edit {
