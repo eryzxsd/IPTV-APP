@@ -77,10 +77,15 @@ and everyone would have to uninstall and reinstall.
 
 The Android app is fully native and doesn't use the web code:
 
-- **UI**: Jetpack Compose and Material 3. It uses a bottom bar on phones and a navigation rail on tablets and TV.
+- **UI (phones and tablets)**: Jetpack Compose and Material 3, with a bottom bar on phones and a navigation rail on tablets.
   - **Home** holds the main player (auto-hiding controls, subtitles, audio, quality, fullscreen channel browser), what's on,
     and on-device recommendations (`data/Recommender.kt`).
   - **Channels** has category and country sheets, **Guide** is a TV guide grid, and **Settings** covers every option.
+- **UI (Android TV)**: a separate, View-based Leanback interface (`tv/`) that is fast on low-end and 32-bit TVs.
+  It opens from the TV launcher and never loads Compose.
+  - **Home**: rows of recommendations and what's on now, over the playing channel.
+  - **Player**: OK shows the info bar and buttons, Up/Down change channel, and Left/Guide/Menu opens the channel list.
+  - **TV guide**, **Search** (with voice) and **Settings** are built with Leanback guided steps.
 - **Playback**: Media3/ExoPlayer, which plays HLS directly. No CORS proxy is needed, and it sends the user agent and
   referrer some iptv-org streams require.
 - **Data**: the same M3U parsing and epgshare01 matching as the web app (`data/M3uParser.kt`, `data/XmltvParser.kt`),
@@ -96,7 +101,7 @@ server/proxy.mjs        CORS proxy (shared by Vite dev server and production ser
 server/app.mjs          static server + proxy (shared by npm start and the desktop app)
 server/index.mjs        `npm start` entry point
 desktop/main.mjs        Electron main process (discontinued Windows/macOS/Linux app)
-android/                Android / Android TV app (Kotlin, Compose, Material 3, Media3)
+android/                Android app (Kotlin, Compose, Material 3, Media3) with a Leanback UI for Android TV
 .github/workflows/      release workflow (Android APK)
 src/lib/m3u.ts          M3U parser
 src/lib/epg.worker.ts   streaming XMLTV(.gz) parser in a Web Worker

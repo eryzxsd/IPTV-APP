@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="tv_bg">#0B0D14</color>
+    <color name="tv_surface">#151824</color>
+    <color name="tv_surface_high">#1E2230</color>
+    <color name="tv_text">#EEF0F6</color>
+    <color name="tv_text_dim">#A4A9BB</color>
+    <color name="tv_accent">#7C5CFF</color>
+    <color name="tv_cyan">#22D3EE</color>
+    <color name="tv_live">#FF4D6D</color>
+    <color name="tv_logo_tile">#F2F3F7</color>
+
+    <style name="Theme.LumenTV.Tv" parent="Theme.Leanback">
+        <item name="android:windowBackground">@color/tv_bg</item>
+        <item name="android:colorPrimary">@color/tv_accent</item>
+        <item name="android:colorAccent">@color/tv_cyan</item>
+        <item name="defaultBrandColor">@color/tv_surface</item>
+        <item name="defaultSearchColor">@color/tv_accent</item>
+        <item name="defaultSectionHeaderColor">@color/tv_text_dim</item>
+        <item name="android:alertDialogTheme">@style/Theme.LumenTV.Tv.Dialog</item>
+        <item name="guidedStepTheme">@style/Theme.LumenTV.Tv.GuidedStep</item>
+    </style>
+
+    <style name="Theme.LumenTV.Tv.GuidedStep" parent="Theme.Leanback.GuidedStep">
+        <item name="guidedStepBackground">@color/tv_bg</item>
+        <item name="guidedActionsBackground">@color/tv_surface</item>
+        <item name="guidedActionsBackgroundDark">@color/tv_surface_high</item>
+    </style>
+
+    <style name="Theme.LumenTV.Tv.Dialog" parent="android:Theme.DeviceDefault.Dialog.Alert">
+        <item name="android:colorAccent">@color/tv_cyan</item>
+    </style>
+
+    <!-- Buttons in the player's info bar: a clear focus state for remotes. -->
+    <style name="TvPlayerButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_marginEnd">12dp</item>
+        <item name="android:paddingStart">20dp</item>
+        <item name="android:paddingEnd">20dp</item>
+        <item name="android:background">@drawable/tv_button</item>
+        <item name="android:textColor">@color/tv_text</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:focusable">true</item>
+        <item name="android:gravity">center</item>
+        <item name="android:drawablePadding">8dp</item>
+    </style>
+</resources>

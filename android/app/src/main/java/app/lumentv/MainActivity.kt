@@ -37,6 +37,13 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
+        // TVs get the Leanback interface, even when a box's launcher opens the phone entry point.
+        val ui = getSystemService(android.app.UiModeManager::class.java)
+        if (ui?.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) {
+            startActivity(android.content.Intent(this, app.lumentv.tv.TvActivity::class.java).putExtras(intent))
+            finish()
+            return
+        }
         // Follow the Play in background setting while the app is open.
         lifecycleScope.launch {
             vm.appPrefs.map { it.playInBackground }.distinctUntilChanged().collect { on ->

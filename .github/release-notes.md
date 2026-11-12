@@ -11,17 +11,15 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
 - **Android**: download the APK on your device and open it. Allow "Install unknown apps" for your browser or file manager when asked.
   On Android TV, sideload it with a file manager or `adb install`.
 
-## What's new in 1.5.0
+## What's new in 1.6.0
 
-- **Play in background** (Settings → Playback): the sound keeps playing when you leave the app or lock the screen.
-  - The notification has play/pause and next/previous channel.
-  - Lock-screen and Bluetooth headset buttons work too.
-  - On Android 13 and newer you'll be asked to allow notifications.
-- **Decoder** (Settings → Playback):
-  - **Auto:** hardware, falling back to software.
-  - **HW:** hardware decoders only.
-  - **HW+:** hardware with tunnelled playback and async decoding, lowest CPU use and best on Android TV.
-  - **SW:** software decoders only.
-  - Changes apply immediately, and so does Buffering now.
-- **Show clock** (Settings → Playback): show the time on the player, either with the controls or always on the video.
-- The **Windows app is discontinued**. New releases include only the Android APK.
+- **A new interface made for Android TV.** On a TV the app opens a remote-friendly interface built with Android's Leanback views instead of Compose. It's fast on low-end and 32-bit TVs. Phones and tablets keep the same app as before.
+  - **Home**: rows of recommendations, what's on now and favorites. The channel you're watching keeps playing behind them.
+  - **Player**:
+    - **OK** shows the info bar (programme, progress, what's next) and the Play, Channels, Subtitles, Audio, Quality, More and Favorite buttons.
+    - **Up/Down** or **CH+/CH−** change channel.
+    - **Left**, **Guide** or **Menu** opens the channel list, with what's on for every channel.
+    - **Back** closes what's open, then returns to Home.
+  - **TV guide**: channels on the left, the full schedule of the selected channel on the right.
+  - **Search** by channel name, category or programme, with voice search from the remote.
+  - **Settings**: every option from the phone app, including playback, decoder, clock, guide regions and playlists.
