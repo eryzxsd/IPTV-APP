@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Version comes from package.json so the APK and EXE always match.
+def pkg = new groovy.json.JsonSlurper().parse(file('../../package.json'))
+def ver = pkg.version as String
+def parts = ver.tokenize('.').collect { it.replaceAll('[^0-9].*', '') as int }
+
+android {
+    namespace 'app.lumentv'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'app.lumentv'
+        minSdk 24
+        targetSdk 35
+        versionCode parts[0] * 10000 + parts[1] * 100 + parts[2]
+        versionName ver
+    }
+
+    signingConfigs {
+        release {
+            // Provide a keystore through env vars (see README) for stable signing;
+            // otherwise the release build falls back to the debug key.
+            def ks = System.getenv('ANDROID_KEYSTORE_FILE')
+            if (ks && file(ks).exists()) {
+                storeFile file(ks)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD') ?: System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release.storeFile ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // The web app (vite build output) is copied here by `npm run build:android`.
+    sourceSets {
+        main.assets.srcDirs = ['src/main/assets']
+    }
+}

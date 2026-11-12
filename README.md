@@ -24,6 +24,11 @@ A modern web IPTV player. It loads the **[iptv-org](https://github.com/iptv-org/
 - **Caching**: the parsed playlist and guide are cached in IndexedDB, so reloads are instant.
   The guide is streamed, un-gzipped and parsed in a Web Worker, and only shows for your channels are kept.
 
+## Download
+
+Get the Android APK (phones, tablets, Android TV) and the Windows installer or portable EXE from the
+[Releases](https://github.com/eryzxsd/IPTV-APP/releases) page.
+
 ## Run it
 
 ```bash
@@ -45,11 +50,38 @@ Behind a corporate HTTP proxy, start the server with `NODE_USE_ENV_PROXY=1 npm s
 
 You can host `dist/` as a plain static site. Without the proxy, only CORS-enabled sources will load.
 
+## Apps
+
+| Platform | How it works | Build locally |
+| --- | --- | --- |
+| Windows / macOS / Linux | Electron shell (`desktop/main.mjs`) running the same local server and proxy as `npm start` | `npm run build:win` (or `npx electron-builder --mac` / `--linux`) |
+| Android & Android TV | Native WebView (`android/`) that serves the app from assets and implements `/proxy/` in Java (`LocalServer.java`) | `npm run build:android` (needs the Android SDK and Gradle 8.14) |
+
+To publish a release, open **Actions → Release → Run workflow** (or push a `v*` tag). It builds the APK on Linux
+and the EXEs on Windows, then attaches them to a GitHub release. The version comes from `package.json`.
+
+### Android signing
+
+Without signing secrets, the APK is signed with a temporary debug key. It installs fine, but each release has a
+different signature, so you have to uninstall before installing an update. For stable signing, create a keystore once:
+
+```bash
+keytool -genkeypair -v -keystore lumentv.jks -alias lumentv -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 lumentv.jks   # copy the output
+```
+
+Then add these repository secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`
+(and `ANDROID_KEY_PASSWORD` if it's different). Keep the `.jks` file safe. Losing it means users must reinstall.
+
 ## Project layout
 
 ```
 server/proxy.mjs        CORS proxy (shared by Vite dev server and production server)
-server/index.mjs        production static server + proxy
+server/app.mjs          static server + proxy (shared by npm start and the desktop app)
+server/index.mjs        `npm start` entry point
+desktop/main.mjs        Electron main process (Windows/macOS/Linux app)
+android/                Android / Android TV app (WebView + on-device proxy)
+.github/workflows/      release workflow (APK + EXE)
 src/lib/m3u.ts          M3U parser
 src/lib/epg.worker.ts   streaming XMLTV(.gz) parser in a Web Worker
 src/lib/hooks.ts        playlist / EPG loading, caching, local storage

@@ -9,22 +9,81 @@
     "build": "tsc -b && vite build",
     "start": "node server/index.mjs",
     "preview": "npm run build && npm start",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "desktop": "npm run build && electron .",
+    "build:win": "npm run build && electron-builder --win --publish never",
+    "build:android": "npm run build && node scripts/copy-android-assets.mjs && gradle -p android assembleRelease"
   },
   "engines": {
     "node": ">=18"
-  },
-  "dependencies": {
-    "hls.js": "^1.7.4",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
+    "electron": "^44.9.3",
+    "electron-builder": "^26.18.0",
+    "hls.js": "^1.7.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.8"
+  },
+  "main": "desktop/main.mjs",
+  "author": "Lumen TV",
+  "homepage": "https://github.com/eryzxsd/IPTV-APP",
+  "build": {
+    "appId": "app.lumentv.desktop",
+    "productName": "Lumen TV",
+    "artifactName": "LumenTV-${version}-${arch}-${target}.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "server/**",
+      "desktop/**",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "LumenTV-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "LumenTV-Portable-${version}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "AudioVideo"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.entertainment"
+    }
   }
 }
