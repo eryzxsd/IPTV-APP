@@ -55,7 +55,7 @@ You can host `dist/` as a plain static site. Without the proxy, only CORS-enable
 | Platform | How it works | Build locally |
 | --- | --- | --- |
 | Windows / macOS / Linux | Electron shell (`desktop/main.mjs`) running the same local server and proxy as `npm start` | `npm run build:win` (or `npx electron-builder --mac` / `--linux`) |
-| Android & Android TV | Native WebView (`android/`) that serves the app from assets and implements `/proxy/` in Java (`LocalServer.java`) | `npm run build:android` (needs the Android SDK and Gradle 8.14) |
+| Android & Android TV | Native app in Kotlin + Jetpack Compose + Material 3, with Media3/ExoPlayer for playback (`android/`) | `cd android && ./gradlew assembleRelease` (needs the Android SDK, platform 37) |
 
 To publish a release, open **Actions → Release → Run workflow** (or push a `v*` tag). It builds the APK on Linux
 and the EXEs on Windows, then attaches them to a GitHub release. The version comes from `package.json`.
@@ -73,6 +73,20 @@ base64 -w0 lumentv.jks   # copy the output
 Then add these repository secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`
 (and `ANDROID_KEY_PASSWORD` if it's different). Keep the `.jks` file safe. Losing it means users must reinstall.
 
+### Android app
+
+The Android app is fully native and doesn't use the web code:
+
+- **UI**: Jetpack Compose and Material 3. It uses a bottom bar on phones and a navigation rail on tablets and TV. There's a
+  channel list with category and country sheets, a player with auto-hiding controls, a TV guide grid, and settings.
+- **Playback**: Media3/ExoPlayer, which plays HLS directly. No CORS proxy is needed, and it sends the user agent and
+  referrer some iptv-org streams require.
+- **Data**: the same M3U parsing and epgshare01 matching as the web app (`data/M3uParser.kt`, `data/XmltvParser.kt`),
+  with results cached on disk. Settings, favorites, recents and stream health are kept in DataStore.
+- **Tests**: `./gradlew testDebugUnitTest` runs the parser tests. Two optional extras:
+  - `LUMEN_REAL_DATA=<folder>` also runs them against real downloads.
+  - `LUMEN_SCREENSHOTS=<folder>` renders the real app with Robolectric and saves screenshots.
+
 ## Project layout
 
 ```
@@ -80,7 +94,7 @@ server/proxy.mjs        CORS proxy (shared by Vite dev server and production ser
 server/app.mjs          static server + proxy (shared by npm start and the desktop app)
 server/index.mjs        `npm start` entry point
 desktop/main.mjs        Electron main process (Windows/macOS/Linux app)
-android/                Android / Android TV app (WebView + on-device proxy)
+android/                Android / Android TV app (Kotlin, Compose, Material 3, Media3)
 .github/workflows/      release workflow (APK + EXE)
 src/lib/m3u.ts          M3U parser
 src/lib/epg.worker.ts   streaming XMLTV(.gz) parser in a Web Worker

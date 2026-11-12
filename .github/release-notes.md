@@ -14,6 +14,13 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
   On Android TV, sideload it with a file manager or `adb install`.
 - **Windows**: the app isn't code-signed, so SmartScreen may warn you. Click **More info → Run anyway**.
 
+## What's new in 1.1
+
+- **New native Android app** built with Kotlin, Jetpack Compose and Material 3, with Media3/ExoPlayer for playback
+  - Smaller and faster than before, and it plays streams that need special headers (user agent or referrer)
+  - Adaptive layout: bottom bar on phones, side rail on tablets and Android TV
+  - Mini player while browsing, picture-in-picture, fullscreen, quality picker, TV-remote channel keys
+
 ## Highlights
 
 - 11,000+ free channels, with categories, countries, favorites, recently watched and search

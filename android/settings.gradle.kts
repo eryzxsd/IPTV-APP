@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = 'LumenTV'
-include ':app'
+rootProject.name = "LumenTV"
+include(":app")

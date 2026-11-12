@@ -25,20 +25,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - run: node scripts/copy-android-assets.mjs
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.14.3
+      - name: Unit tests
+        working-directory: android
+        run: ./gradlew testDebugUnitTest --no-daemon
       - name: Decode signing key (optional)
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -50,11 +44,12 @@ jobs:
             echo "::warning::No ANDROID_KEYSTORE_BASE64 secret — the APK is signed with a temporary debug key."
           fi
       - name: Build APK
+        working-directory: android
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle -p android assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
       - name: Rename
         run: |
           VERSION=$(node -p "require('./package.json').version")
