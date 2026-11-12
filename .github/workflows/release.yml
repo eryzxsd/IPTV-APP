@@ -33,16 +33,18 @@ jobs:
       - name: Unit tests
         working-directory: android
         run: ./gradlew testDebugUnitTest --no-daemon
-      - name: Decode signing key (optional)
+      - name: Decode signing key
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-          else
-            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret — the APK is signed with a temporary debug key."
+          # Every release must be signed with the same key, or Android refuses to
+          # install it as an update. Never fall back to a throwaway key here.
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::Missing ANDROID_KEYSTORE_BASE64 secret. Add the signing secrets (see README > Android signing)."
+            exit 1
           fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
       - name: Build APK
         working-directory: android
         env:
@@ -50,6 +52,16 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon
+      - name: Check signing certificate
+        run: |
+          APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          ACTUAL=$("$APKSIGNER" verify --print-certs android/app/build/outputs/apk/release/app-release.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          EXPECTED=$(tr -d '[:space:]' < android/signing-cert-sha256.txt)
+          echo "APK certificate: $ACTUAL"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::APK is signed with $ACTUAL but releases must use $EXPECTED (android/signing-cert-sha256.txt). Updates would fail to install."
+            exit 1
+          fi
       - name: Rename
         run: |
           VERSION=$(node -p "require('./package.json').version")

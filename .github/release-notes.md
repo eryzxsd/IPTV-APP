@@ -14,6 +14,11 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
   On Android TV, sideload it with a file manager or `adb install`.
 - **Windows**: the app isn't code-signed, so SmartScreen may warn you. Click **More info → Run anyway**.
 
+## What's new in 1.2.1
+
+- **Updates now install over the previous version.** The APK is signed with a permanent release key.
+  If you installed 1.2.0 or older, uninstall it once before installing this version. From now on, updates install in place.
+
 ## What's new in 1.2
 
 - **Player controls** on Android:

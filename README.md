@@ -62,16 +62,15 @@ and the EXEs on Windows, then attaches them to a GitHub release. The version com
 
 ### Android signing
 
-Without signing secrets, the APK is signed with a temporary debug key. It installs fine, but each release has a
-different signature, so you have to uninstall before installing an update. For stable signing, create a keystore once:
+Every APK is signed with the same release key, so new versions install as updates over old ones. The release workflow:
 
-```bash
-keytool -genkeypair -v -keystore lumentv.jks -alias lumentv -keyalg RSA -keysize 2048 -validity 10000
-base64 -w0 lumentv.jks   # copy the output
-```
+- signs with the keystore from these repository secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`
+  and `ANDROID_KEY_ALIAS`
+- **refuses to release** when those secrets are missing, instead of falling back to a throwaway key
+- checks that the APK's certificate matches `android/signing-cert-sha256.txt`
 
-Then add these repository secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`
-(and `ANDROID_KEY_PASSWORD` if it's different). Keep the `.jks` file safe. Losing it means users must reinstall.
+Keep a backup of the keystore (`.jks`) and its password somewhere safe. If you lose them, you can't publish updates,
+and everyone would have to uninstall and reinstall.
 
 ### Android app
 
