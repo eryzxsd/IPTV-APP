@@ -125,5 +125,16 @@ class ParserTest {
         println("guide: ${data.size} keys, $withGuide channels with guide data in ${System.currentTimeMillis() - t1} ms")
         assertTrue(withGuide > 300)
         data.values.forEach { list -> assertTrue(list.zipWithNext().all { (a, b) -> a.start < b.start }) }
+
+        // Recommendations on the full playlist, as if two news channels were watched recently.
+        val recent = channels.filter { "News" in it.groups && it.country == "US" }.take(2)
+        val t2 = System.currentTimeMillis()
+        val rows = Recommender.homeRows(
+            channels, recent, emptyList(), "US",
+            hasGuideNow = { !data[it.epgKey].isNullOrEmpty() }, isOffline = { false }, playedOk = { false },
+        )
+        println("home rows in ${System.currentTimeMillis() - t2} ms (recent: ${recent.map { it.name }})")
+        rows.forEach { r -> println("  ${r.title}: ${r.channels.take(6).joinToString { it.name }}") }
+        assertTrue(rows.any { it.id == "for-you" })
     }
 }

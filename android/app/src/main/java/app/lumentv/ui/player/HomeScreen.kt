@@ -67,6 +67,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import app.lumentv.ui.home.recommendationItems
+import app.lumentv.ui.home.FeaturedCard
+import app.lumentv.ui.components.LoadingBar
+import app.lumentv.data.Recommender
+import app.lumentv.data.LoadState
+import app.lumentv.data.HomeRow
+import app.lumentv.data.EpgData
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.BoxWithConstraints
 import kotlin.math.abs
 import androidx.compose.material.icons.automirrored.rounded.List
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -113,20 +122,26 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Home: the main player with its controls, what's on, up next and recommendations.
+ * Phones go fullscreen in landscape; tablets and TVs use the fullscreen button.
+ */
 @OptIn(UnstableApi::class)
 @Composable
-fun PlayerScreen(vm: MainViewModel, inPip: Boolean, onBack: () -> Unit) {
+fun HomeScreen(vm: MainViewModel, inPip: Boolean, onOpen: (Channel) -> Unit) {
     val playback by vm.player.state.collectAsStateWithLifecycle()
     val epg by vm.epg.collectAsStateWithLifecycle()
     val clock by vm.clock.collectAsStateWithLifecycle()
     val lib by vm.library.collectAsStateWithLifecycle()
-    val channel = playback.channel ?: run { LaunchedEffect(Unit) { onBack() }; return }
-    val programmes = epg[channel.epgKey]
-    val (now, next) = programmes.nowAndNext(clock)
+    val rows by vm.homeRows.collectAsStateWithLifecycle()
+    val userFullscreen by vm.fullscreen.collectAsStateWithLifecycle()
+    val channel = playback.channel
 
     val activity = LocalContext.current as? Activity
-    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val fullscreen = landscape || inPip
+    val config = LocalConfiguration.current
+    val landscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val large = config.smallestScreenWidthDp >= 600 // tablets and TVs: landscape is normal, not "fullscreen"
+    val fullscreen = channel != null && (inPip || userFullscreen || (landscape && !large))
 
     // Immersive mode while the video fills the screen.
     val view = LocalView.current
@@ -142,51 +157,114 @@ fun PlayerScreen(vm: MainViewModel, inPip: Boolean, onBack: () -> Unit) {
         onDispose { ctl?.show(WindowInsetsCompat.Type.systemBars()) }
     }
     DisposableEffect(Unit) {
-        onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        onDispose {
+            vm.fullscreen.value = false
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
     }
-    val toggleFullscreen = {
-        activity?.requestedOrientation =
-            if (landscape) ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
+    LaunchedEffect(channel == null) { if (channel == null) vm.fullscreen.value = false }
+    val toggleFullscreen: () -> Unit = {
+        if (large) {
+            vm.fullscreen.value = !vm.fullscreen.value
+        } else {
+            vm.fullscreen.value = false
+            activity?.requestedOrientation =
+                if (landscape) ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
+        }
     }
-    BackHandler(enabled = landscape && !inPip) { toggleFullscreen() }
+    BackHandler(enabled = fullscreen && !inPip) { toggleFullscreen() }
 
+    if (channel == null) {
+        IdleHome(vm, rows, epg, clock, onOpen)
+        return
+    }
+    val programmes = epg[channel.epgKey]
+    val (now, _) = programmes.nowAndNext(clock)
     val favorite = channel.id in lib.favorites
 
     if (fullscreen) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            VideoBox(vm, playback, channel, now, clock, fullscreen = true, inPip = inPip, favorite = favorite, onBack = onBack, onFullscreen = toggleFullscreen)
+            VideoBox(vm, playback, channel, now, clock, fullscreen = true, inPip = inPip, favorite = favorite, onBack = toggleFullscreen, onFullscreen = toggleFullscreen)
         }
         return
     }
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Box(Modifier.background(Color.Black).statusBarsPadding().fillMaxWidth().aspectRatio(16f / 9f)) {
-            VideoBox(vm, playback, channel, now, clock, fullscreen = false, inPip = false, favorite = favorite, onBack = onBack, onFullscreen = toggleFullscreen)
+    val video: @Composable (Modifier) -> Unit = { m ->
+        Box(m.background(Color.Black).aspectRatio(16f / 9f)) {
+            VideoBox(vm, playback, channel, now, clock, fullscreen = false, inPip = false, favorite = favorite, onBack = null, onFullscreen = toggleFullscreen)
         }
-        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp)) {
-            item { ChannelHeader(channel, favorite, onFavorite = { vm.toggleFavorite(channel) }) }
-            item { NowCard(channel, now, clock, noGuide = programmes == null) }
-            if (!programmes.isNullOrEmpty()) {
+    }
+    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        if (maxWidth >= 840.dp) {
+            // Wide: video and its details side by side, recommendations underneath.
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
                 item {
-                    Text("Schedule", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 22.dp, bottom = 6.dp))
-                }
-                // Day headers are precomputed: lazy items may compose in any order.
-                val upcoming = programmes.filter { it.stop > clock }.take(30)
-                val firstDay = upcoming.firstOrNull()?.let { dayFmt.format(Date(it.start)) }
-                val rows = upcoming.mapIndexed { i, p ->
-                    val day = dayFmt.format(Date(p.start))
-                    val prev = upcoming.getOrNull(i - 1)?.let { dayFmt.format(Date(it.start)) } ?: firstDay
-                    (if (day != prev) day else null) to p
-                }
-                items(rows, key = { it.second.start }) { (header, p) ->
-                    Column {
-                        if (header != null) Text(header.uppercase(), style = Eyebrow, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 14.dp, bottom = 4.dp))
-                        ScheduleRow(p, live = p === now)
+                    Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        video(Modifier.weight(0.62f).clip(MaterialTheme.shapes.large))
+                        Column(Modifier.weight(0.38f)) {
+                            ChannelHeader(channel, favorite, onFavorite = { vm.toggleFavorite(channel) })
+                            NowCard(channel, now, clock, noGuide = programmes == null)
+                            UpNext(programmes, now, clock, initial = 3)
+                        }
                     }
                 }
+                recommendationItems(rows, epg, clock, channel.id, onOpen)
             }
-            item { if (next == null && programmes.isNullOrEmpty()) Spacer(Modifier.height(24.dp)) }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                video(Modifier.fillMaxWidth())
+                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp)) {
+                    item {
+                        Column(Modifier.padding(horizontal = 16.dp)) {
+                            ChannelHeader(channel, favorite, onFavorite = { vm.toggleFavorite(channel) })
+                            NowCard(channel, now, clock, noGuide = programmes == null)
+                            UpNext(programmes, now, clock, initial = 4)
+                        }
+                    }
+                    recommendationItems(rows, epg, clock, channel.id, onOpen)
+                }
+            }
         }
+    }
+}
+
+/** The next few shows, expandable to the full schedule. */
+@Composable
+private fun UpNext(programmes: List<Programme>?, now: Programme?, clock: Long, initial: Int) {
+    if (programmes.isNullOrEmpty()) return
+    var expanded by remember { mutableStateOf(false) }
+    val upcoming = programmes.filter { it.stop > clock && it !== now }.take(if (expanded) 30 else initial)
+    if (upcoming.isEmpty()) return
+    Row(Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Up next", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Show less" else "Full schedule") }
+    }
+    var lastDay = dayFmt.format(Date(clock))
+    upcoming.forEach { p ->
+        val day = dayFmt.format(Date(p.start))
+        if (day != lastDay) {
+            Text(day.uppercase(), style = Eyebrow, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+            lastDay = day
+        }
+        ScheduleRow(p, live = false)
+    }
+}
+
+/** Nothing playing: a featured pick and the recommendation rows. */
+@Composable
+private fun IdleHome(vm: MainViewModel, rows: List<HomeRow>, epg: EpgData, clock: Long, onOpen: (Channel) -> Unit) {
+    val state by vm.channelState.collectAsStateWithLifecycle()
+    val featured = remember(rows) { Recommender.featured(rows) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+        item {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text("Home", style = MaterialTheme.typography.headlineSmall)
+                Text("What do you want to watch?", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (state is LoadState.Loading && rows.isEmpty()) item { LoadingBar(Modifier.padding(16.dp)) }
+        if (featured != null) item { FeaturedCard(featured, epg[featured.epgKey].nowAndNext(clock).first, clock) { onOpen(featured) } }
+        recommendationItems(rows, epg, clock, null, onOpen)
     }
 }
 
@@ -203,7 +281,7 @@ private fun BoxScope.VideoBox(
     fullscreen: Boolean,
     inPip: Boolean,
     favorite: Boolean,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     onFullscreen: () -> Unit,
 ) {
     var controls by remember { mutableStateOf(true) }
@@ -306,7 +384,11 @@ private fun BoxScope.VideoBox(
                     .padding(horizontal = 4.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = Color.White) }
+                if (onBack != null) {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Exit fullscreen", tint = Color.White) }
+                } else {
+                    Spacer(Modifier.width(12.dp))
+                }
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(channel.name, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))

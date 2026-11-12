@@ -1,6 +1,14 @@
 package app.lumentv.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import app.lumentv.ui.player.HomeScreen
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.ui.platform.LocalConfiguration
+import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -42,10 +50,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
 import app.lumentv.data.Channel
 import app.lumentv.data.nowAndNext
 import app.lumentv.ui.channels.ChannelsScreen
@@ -53,11 +57,11 @@ import app.lumentv.ui.components.ChannelLogo
 import app.lumentv.ui.components.GradientProgress
 import app.lumentv.ui.guide.GuideScreen
 import app.lumentv.ui.player.PlaybackState
-import app.lumentv.ui.player.PlayerScreen
 import app.lumentv.ui.settings.SettingsScreen
 import app.lumentv.ui.theme.Brand
 
 private enum class Tab(val label: String, val icon: ImageVector) {
+    Home("Home", Icons.Rounded.Home),
     Channels("Channels", Icons.Rounded.LiveTv),
     Guide("Guide", Icons.Rounded.CalendarViewDay),
     Settings("Settings", Icons.Rounded.Settings),
@@ -65,46 +69,47 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 
 @Composable
 fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Unit) {
-    val nav = rememberNavController()
-    val entry by nav.currentBackStackEntryAsState()
-    val onPlayer = entry?.destination?.route == "player"
-    LaunchedEffect(onPlayer) { onPlayerVisible(onPlayer) }
+    var tab by rememberSaveable { mutableStateOf(Tab.Home) }
+    val playback by vm.player.state.collectAsStateWithLifecycle()
+    val userFullscreen by vm.fullscreen.collectAsStateWithLifecycle()
+    val playing = playback.channel != null
+    LaunchedEffect(tab, playing) { onPlayerVisible(tab == Tab.Home && playing) }
 
+    // Picking a channel anywhere plays it on Home.
     val open: (Channel) -> Unit = { c ->
         if (vm.player.state.value.channel?.id != c.id || vm.player.state.value.status == PlaybackState.Status.Error) vm.play(c)
-        if (!onPlayer) nav.navigate("player") { launchSingleTop = true }
+        tab = Tab.Home
     }
+    BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
 
-    // Surface provides the theme's content colour to every screen (incl. the player).
+    val config = LocalConfiguration.current
+    val phoneLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE && config.smallestScreenWidthDp < 600
+    val videoFullscreen = tab == Tab.Home && playing && (inPip || userFullscreen || phoneLandscape)
+    val adaptive = NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(currentWindowAdaptiveInfo())
+
+    // Surface provides the theme's content colour to every screen.
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        NavHost(nav, startDestination = "home", modifier = Modifier.fillMaxSize()) {
-            composable("home") { Home(vm, open, onOpenPlayer = { nav.navigate("player") { launchSingleTop = true } }) }
-            composable("player") { PlayerScreen(vm, inPip = inPip, onBack = { nav.popBackStack() }) }
-        }
-    }
-}
-
-@Composable
-private fun Home(vm: MainViewModel, open: (Channel) -> Unit, onOpenPlayer: () -> Unit) {
-    var tab by rememberSaveable { mutableStateOf(Tab.Channels) }
-    NavigationSuiteScaffold(
-        navigationSuiteItems = {
-            Tab.entries.forEach { t ->
-                item(selected = tab == t, onClick = { tab = t }, icon = { Icon(t.icon, null) }, label = { Text(t.label) })
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.background,
-    ) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Box(Modifier.weight(1f)) {
-                val pad = PaddingValues(bottom = 12.dp)
-                when (tab) {
-                    Tab.Channels -> ChannelsScreen(vm, onOpenPlayer = open, contentPadding = pad)
-                    Tab.Guide -> GuideScreen(vm, onPlay = open, contentPadding = pad)
-                    Tab.Settings -> SettingsScreen(vm, contentPadding = pad)
+        NavigationSuiteScaffold(
+            navigationSuiteItems = {
+                Tab.entries.forEach { t ->
+                    item(selected = tab == t, onClick = { tab = t }, icon = { Icon(t.icon, null) }, label = { Text(t.label) })
                 }
+            },
+            layoutType = if (videoFullscreen) NavigationSuiteType.None else adaptive,
+            containerColor = MaterialTheme.colorScheme.background,
+        ) {
+            Column(Modifier.fillMaxSize().then(if (videoFullscreen) Modifier else Modifier.statusBarsPadding())) {
+                Box(Modifier.weight(1f)) {
+                    val pad = PaddingValues(bottom = 12.dp)
+                    when (tab) {
+                        Tab.Home -> HomeScreen(vm, inPip = inPip, onOpen = open)
+                        Tab.Channels -> ChannelsScreen(vm, onOpenPlayer = open, contentPadding = pad)
+                        Tab.Guide -> GuideScreen(vm, onPlay = open, contentPadding = pad)
+                        Tab.Settings -> SettingsScreen(vm, contentPadding = pad)
+                    }
+                }
+                if (tab != Tab.Home) MiniPlayer(vm, onOpen = { tab = Tab.Home }, onResume = open)
             }
-            MiniPlayer(vm, onOpen = onOpenPlayer, onResume = open)
         }
     }
 }

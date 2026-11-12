@@ -8,6 +8,8 @@ import androidx.media3.common.util.UnstableApi
 import app.lumentv.LumenApp
 import app.lumentv.data.AppPrefs
 import app.lumentv.data.Channel
+import app.lumentv.data.HomeRow
+import app.lumentv.data.Recommender
 import app.lumentv.data.EpgData
 import app.lumentv.data.Library
 import app.lumentv.data.LoadState
@@ -60,6 +62,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val query = MutableStateFlow("")
     /** Fullscreen channel browser open. */
     val browsing = MutableStateFlow(false)
+    /** Fullscreen requested with the button (tablets/TV; phones use rotation). */
+    val fullscreen = MutableStateFlow(false)
     val filter = MutableStateFlow<Filter>(Filter.All)
 
     /** Ticks every 30 s so "now playing" and progress bars stay current. */
@@ -110,6 +114,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         list
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Home rows (continue watching, recommendations, on now, categories), built on-device. */
+    val homeRows: StateFlow<List<HomeRow>> = combine(
+        channels,
+        library,
+        epg,
+        player.state.map { it.channel?.id }.distinctUntilChanged(),
+        clock.map { it / 600_000 }.distinctUntilChanged(), // refresh "on now" every 10 minutes
+    ) { all, lib, epg, current, _ ->
+        val byId = all.associateBy { it.id }
+        val now = System.currentTimeMillis()
+        val watched = lib.recent.toHashSet()
+        Recommender.homeRows(
+            all = all,
+            recent = lib.recent.mapNotNull(byId::get),
+            favorites = lib.favorites.mapNotNull(byId::get),
+            deviceCountry = java.util.Locale.getDefault().country,
+            hasGuideNow = { epg[it.epgKey].nowAndNext(now).first != null },
+            isOffline = { lib.isOffline(it.id) },
+            playedOk = { it.id in watched },
+            exclude = current,
+        )
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Last watched channel, shown in the mini player until the user picks something. */

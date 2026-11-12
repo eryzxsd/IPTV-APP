@@ -77,8 +77,10 @@ and everyone would have to uninstall and reinstall.
 
 The Android app is fully native and doesn't use the web code:
 
-- **UI**: Jetpack Compose and Material 3. It uses a bottom bar on phones and a navigation rail on tablets and TV. There's a
-  channel list with category and country sheets, a player with auto-hiding controls, a TV guide grid, and settings.
+- **UI**: Jetpack Compose and Material 3. It uses a bottom bar on phones and a navigation rail on tablets and TV.
+  - **Home** holds the main player (auto-hiding controls, subtitles, audio, quality, fullscreen channel browser), what's on,
+    and on-device recommendations (`data/Recommender.kt`).
+  - **Channels** has category and country sheets, **Guide** is a TV guide grid, and **Settings** covers every option.
 - **Playback**: Media3/ExoPlayer, which plays HLS directly. No CORS proxy is needed, and it sends the user agent and
   referrer some iptv-org streams require.
 - **Data**: the same M3U parsing and epgshare01 matching as the web app (`data/M3uParser.kt`, `data/XmltvParser.kt`),

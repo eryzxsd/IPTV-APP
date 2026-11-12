@@ -64,7 +64,9 @@ class MainActivity : ComponentActivity() {
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { vm.player.togglePlay(); return true }
             // TV remotes: Guide / Menu opens the channel browser over the video.
             KeyEvent.KEYCODE_GUIDE, KeyEvent.KEYCODE_MENU -> if (playerVisible) {
-                vm.browsing.value = !vm.browsing.value
+                val open = !vm.browsing.value
+                vm.browsing.value = open
+                if (open) vm.fullscreen.value = true // TVs aren't fullscreen just because they're landscape
                 return true
             }
         }

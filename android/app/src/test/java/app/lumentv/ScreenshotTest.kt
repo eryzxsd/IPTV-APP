@@ -9,6 +9,8 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -50,6 +52,9 @@ class ScreenshotTest {
 
     @Test fun phone() {
         waitForData()
+        shot("0-home")
+        rule.onAllNodesWithText("Channels").onFirst().performClick()
+        rule.mainClock.advanceTimeBy(1_000)
         shot("1-channels")
 
         rule.onAllNodesWithText("Category").onFirst().performClick()
@@ -88,9 +93,14 @@ class ScreenshotTest {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
             rule.onAllNodesWithText(ch.name).fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onAllNodesWithText(ch.name).onFirst().performClick()
+        rule.onAllNodesWithText(ch.name).onFirst().performClick() // plays it on Home
         rule.mainClock.advanceTimeBy(2_000)
-        shot("5-player")
+        shot("5-home-player")
+        rule.onRoot().performTouchInput { swipeUp(startY = bottom * 0.8f, endY = bottom * 0.3f) }
+        rule.mainClock.advanceTimeBy(1_500)
+        shot("5b-home-recommendations")
+        rule.onRoot().performTouchInput { swipeDown(startY = bottom * 0.4f, endY = bottom * 0.85f) }
+        rule.mainClock.advanceTimeBy(1_000)
 
         // Player option sheets.
         rule.waitUntil(30_000) {
@@ -113,29 +123,38 @@ class ScreenshotTest {
         openSheet("Subtitles", "7-subtitles")
         openSheet("Audio track", "8-audio")
         openSheet("More options", "9-more")
-        rule.activity.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.onAllNodesWithText("Channels").onFirst().performClick()
         rule.mainClock.advanceTimeBy(1_000)
         shot("6-favorites-miniplayer")
+    }
+
+    private fun playNewsChannel(): app.lumentv.data.Channel {
+        val vm = rule.activity.vm
+        val ch = vm.channels.value.first { !vm.epg.value[it.epgKey].isNullOrEmpty() && it.name.contains("News") }
+        rule.activity.runOnUiThread { vm.play(ch) }
+        rule.mainClock.advanceTimeBy(2_000)
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        rule.mainClock.advanceTimeBy(1_000)
+        return ch
     }
 
     @Test
     @Config(sdk = [35], qualifiers = "w891dp-h411dp-land-xxhdpi")
     fun landscapeBrowse() {
         waitForData()
-        val vm = rule.activity.vm
-        val ch = vm.channels.value.first { !vm.epg.value[it.epgKey].isNullOrEmpty() && it.name.contains("News") }
-        rule.activity.runOnUiThread { vm.play(ch) }
-        rule.mainClock.advanceTimeBy(1_000)
-        rule.waitUntil(15_000) {
-            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
-            rule.onAllNodesWithText(ch.name).fetchSemanticsNodes().isNotEmpty()
-        }
-        shot("10-landscape-home")
-        rule.onAllNodesWithText(ch.name).onFirst().performClick() // mini player -> fullscreen player
-        rule.mainClock.advanceTimeBy(1_500)
+        playNewsChannel() // phones go fullscreen in landscape
         shot("11-fullscreen")
-        rule.activity.runOnUiThread { vm.browsing.value = true }
+        rule.activity.runOnUiThread { rule.activity.vm.browsing.value = true }
         rule.mainClock.advanceTimeBy(1_500)
         shot("12-fullscreen-browse")
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w1280dp-h800dp-land-xhdpi")
+    fun tabletHome() {
+        waitForData()
+        shot("13a-tablet-idle")
+        playNewsChannel() // tablets/TV keep the Home layout in landscape
+        shot("13b-tablet-home")
     }
 }
