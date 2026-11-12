@@ -14,6 +14,17 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
   On Android TV, sideload it with a file manager or `adb install`.
 - **Windows**: the app isn't code-signed, so SmartScreen may warn you. Click **More info → Run anyway**.
 
+## What's new in 1.2.2
+
+- **Quality menu fixed:** channels whose stream doesn't declare resolutions (about 1 in 4) now list every quality
+  instead of only "Auto". These show the bitrate first, then the real resolution once it's known. The quality
+  that's playing is marked, and single-quality channels show their resolution.
+- **Slow channels aren't treated as broken:**
+  - No more timeout. After a while you'll see "Still connecting…" with **Keep waiting** or **Next channel**.
+  - Network hiccups get automatic retries and a silent reconnect.
+  - A channel is only marked **Offline** after it fails twice for a definite reason (for example HTTP 404/403
+    or an unsupported format), and the mark expires after 3 days. Earlier offline marks have been reset.
+
 ## What's new in 1.2.1
 
 - **Updates now install over the previous version.** The APK is signed with a permanent release key.

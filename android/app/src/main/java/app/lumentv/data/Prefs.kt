@@ -26,11 +26,14 @@ data class UserSettings(
 data class Library(
     val favorites: List<String> = emptyList(),
     val recent: List<String> = emptyList(),
-    /** channel id -> true (played) / false (failed) */
-    val health: Map<String, Boolean> = emptyMap(),
+    /** channel id -> recent definite failures (a successful play removes the entry) */
+    val health: Map<String, Health> = emptyMap(),
     val lastChannel: String? = null,
     val hideOffline: Boolean = false,
-)
+) {
+    /** Offline only after repeated definite failures; see [HealthPolicy]. */
+    fun isOffline(id: String, now: Long = System.currentTimeMillis()) = HealthPolicy.isOffline(health[id], now)
+}
 
 /** Settings and the user's library (favorites, recents, stream health) in DataStore. */
 class Prefs(private val context: Context) {
@@ -41,7 +44,9 @@ class Prefs(private val context: Context) {
         val epgEnabled = booleanPreferencesKey("epg_enabled")
         val favorites = stringPreferencesKey("favorites")
         val recent = stringPreferencesKey("recent")
-        val health = stringPreferencesKey("health")
+        // v2: failure counts. The old key held one-strike "offline" marks and is dropped.
+        val oldHealth = stringPreferencesKey("health")
+        val health = stringPreferencesKey("health2")
         val last = stringPreferencesKey("last_channel")
         val hideOffline = booleanPreferencesKey("hide_offline")
     }
@@ -63,7 +68,7 @@ class Prefs(private val context: Context) {
         Library(
             favorites = list(p, K.favorites).orEmpty(),
             recent = list(p, K.recent).orEmpty(),
-            health = p[K.health]?.let { runCatching { json.decodeFromString<Map<String, Boolean>>(it) }.getOrNull() }.orEmpty(),
+            health = decodeHealth(p[K.health]),
             lastChannel = p[K.last],
             hideOffline = p[K.hideOffline] ?: false,
         )
@@ -87,12 +92,23 @@ class Prefs(private val context: Context) {
         it[K.last] = id
     }
 
+    private fun decodeHealth(s: String?): Map<String, Health> =
+        s?.let { runCatching { json.decodeFromString<Map<String, Health>>(it) }.getOrNull() }.orEmpty()
+
+    /** ok = the stream played (clears failures); otherwise records a definite failure. */
     suspend fun setHealth(id: String, ok: Boolean) = context.dataStore.edit {
-        val cur = it[K.health]?.let { s -> runCatching { json.decodeFromString<Map<String, Boolean>>(s) }.getOrNull() }.orEmpty()
-        if (cur[id] == ok) return@edit
-        val next = LinkedHashMap(cur).apply { remove(id); put(id, ok) }
+        it.remove(K.oldHealth)
+        val cur = decodeHealth(it[K.health])
+        val now = System.currentTimeMillis()
+        val next = LinkedHashMap(cur)
+        if (ok) {
+            if (next.remove(id) == null) return@edit
+        } else {
+            next.remove(id)
+            next[id] = HealthPolicy.recordFailure(cur[id], now)
+        }
         while (next.size > 3000) next.remove(next.keys.first())
-        it[K.health] = json.encodeToString(next as Map<String, Boolean>)
+        it[K.health] = json.encodeToString(next as Map<String, Health>)
     }
 
     suspend fun setHideOffline(v: Boolean) = context.dataStore.edit { it[K.hideOffline] = v }

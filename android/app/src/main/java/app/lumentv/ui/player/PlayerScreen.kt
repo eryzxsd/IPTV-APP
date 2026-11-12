@@ -252,8 +252,15 @@ private fun BoxScope.VideoBox(
     )
 
     when (playback.status) {
-        PlaybackState.Status.Loading -> Box(Modifier.align(Alignment.Center)) {
-            CircularProgressIndicator(color = Brand.Cyan, strokeWidth = 3.dp)
+        PlaybackState.Status.Loading -> if (playback.slow && !inPip) {
+            SlowOverlay(playback.reconnecting, onKeepWaiting = vm.player::keepWaiting, onNext = { vm.zap(1) })
+        } else {
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = Brand.Cyan, strokeWidth = 3.dp)
+                if (playback.reconnecting && !inPip) {
+                    Text("Reconnecting…", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
+                }
+            }
         }
         PlaybackState.Status.Error -> if (!inPip) ErrorOverlay(playback.error, channel, onRetry = vm.player::retry, onNext = { vm.zap(1) })
         else -> {}
@@ -336,6 +343,35 @@ private fun RoundIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, lab
         onClick = onClick,
         modifier = Modifier.size(48.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f)),
     ) { Icon(icon, label, tint = Color.White, modifier = Modifier.size(28.dp)) }
+}
+
+/** Shown when a channel is slow to start: it isn't treated as broken, the user decides. */
+@Composable
+private fun BoxScope.SlowOverlay(reconnecting: Boolean, onKeepWaiting: () -> Unit, onNext: () -> Unit) {
+    Column(
+        Modifier.matchParentSize().background(Color(0x99000000)).padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        CircularProgressIndicator(color = Brand.Cyan, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
+        Spacer(Modifier.height(12.dp))
+        Text(if (reconnecting) "Reconnecting…" else "Still connecting…", color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            "Some channels take a while to start. It'll keep trying.",
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(vertical = 6.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = onKeepWaiting) { Text("Keep waiting", color = Color.White) }
+            Button(onClick = onNext) {
+                Text("Next channel")
+                Spacer(Modifier.width(6.dp))
+                Icon(Icons.Rounded.SkipNext, null, Modifier.size(18.dp))
+            }
+        }
+    }
 }
 
 @Composable

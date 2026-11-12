@@ -96,11 +96,7 @@ private fun ControlIcon(icon: ImageVector, label: String, highlighted: Boolean =
 
 @Composable
 private fun QualityChip(playback: PlaybackState, onClick: () -> Unit) {
-    val label = when {
-        !playback.autoQuality -> playback.video.firstOrNull { it.selected }?.label ?: "Manual"
-        playback.currentHeight != null -> "Auto · ${playback.currentHeight}p"
-        else -> "Auto"
-    }
+    val label = QualityLogic.chipLabel(playback.autoQuality, playback.video, playback.currentHeight, playback.channel?.quality)
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(8.dp),
@@ -168,14 +164,22 @@ fun PlayerSheetHost(sheet: PlayerSheet?, controller: PlayerController, playback:
                 }
 
                 PlayerSheet.Quality -> {
-                    SheetTitle("Quality", "Auto adjusts to your connection")
-                    Choice(
-                        "Auto",
-                        playback.currentHeight?.let { "Currently ${it}p" },
-                        selected = playback.autoQuality,
-                    ) { controller.selectQuality(null); onSheet(null) }
-                    if (playback.video.isEmpty()) Empty("This stream has a single quality.")
-                    Options(playback.video, selected = { !playback.autoQuality && it.selected }) { controller.selectQuality(it.id); onSheet(null) }
+                    val now = playback.currentHeight?.let { "${it}p" } ?: playback.channel?.quality
+                    if (playback.video.size <= 1) {
+                        SheetTitle("Quality", null)
+                        Empty(
+                            when {
+                                playback.status != PlaybackState.Status.Playing && playback.video.isEmpty() ->
+                                    "Quality options appear once the stream has started."
+                                now != null -> "This channel only broadcasts in one quality: $now."
+                                else -> "This channel only broadcasts in one quality."
+                            },
+                        )
+                    } else {
+                        SheetTitle("Quality", "Auto adjusts to your connection")
+                        Choice("Auto", now?.let { "Currently $it" }, selected = playback.autoQuality) { controller.selectQuality(null); onSheet(null) }
+                        Options(playback.video, selected = { !playback.autoQuality && it.selected }) { controller.selectQuality(it.id); onSheet(null) }
+                    }
                 }
 
                 PlayerSheet.More -> {

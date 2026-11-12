@@ -15,6 +15,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.DefaultTrackNameProvider
 import app.lumentv.data.Channel
@@ -66,6 +67,10 @@ data class PlaybackState(
     /** Wall-clock time when the sleep timer pauses playback, or null. */
     val sleepAt: Long? = null,
     val isLive: Boolean = false,
+    /** Still connecting after a while: some channels are just slow to start. */
+    val slow: Boolean = false,
+    /** Silently reconnecting after a network hiccup. */
+    val reconnecting: Boolean = false,
 ) {
     enum class Status { Idle, Loading, Playing, Error }
 }
@@ -98,13 +103,18 @@ class PlayerController(
     val state: StateFlow<PlaybackState> = _state.asStateFlow()
     private var watchdog: Job? = null
     private var sleepJob: Job? = null
+    /** Heights learned from decoded video for variants whose manifest entry has no RESOLUTION. */
+    private val learnedHeights = HashMap<String, Int>()
+    private var autoRetried = false
 
     init {
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
                     watchdog?.cancel()
-                    _state.update { it.copy(status = PlaybackState.Status.Playing, error = null, isLive = player.isCurrentMediaItemLive) }
+                    _state.update {
+                        it.copy(status = PlaybackState.Status.Playing, error = null, isLive = player.isCurrentMediaItemLive, slow = false, reconnecting = false)
+                    }
                     _state.value.channel?.let { onHealth(it, true) }
                 } else if (playbackState == Player.STATE_BUFFERING && _state.value.status != PlaybackState.Status.Playing) {
                     _state.update { it.copy(status = PlaybackState.Status.Loading) }
@@ -121,13 +131,29 @@ class PlayerController(
                     player.prepare()
                     return
                 }
-                fail(describe(error))
+                val definite = isDefinite(error)
+                // One silent reconnect for network hiccups before showing an error.
+                if (!definite && !autoRetried) {
+                    autoRetried = true
+                    _state.update { it.copy(status = PlaybackState.Status.Loading, reconnecting = true) }
+                    scope.launch {
+                        delay(2_000)
+                        player.prepare()
+                        player.play()
+                    }
+                    return
+                }
+                fail(describe(error), definite)
             }
 
             override fun onTracksChanged(tracks: Tracks) = refreshTracks()
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
-                if (videoSize.height > 0) _state.update { it.copy(currentHeight = videoSize.height) }
+                if (videoSize.height <= 0) return
+                // Remember the real height of the variant that's playing (manifests often omit it).
+                player.videoFormat?.id?.let { learnedHeights[it] = videoSize.height }
+                _state.update { it.copy(currentHeight = videoSize.height) }
+                refreshTracks()
             }
         })
     }
@@ -149,17 +175,35 @@ class PlayerController(
         // Track overrides belong to the previous stream; language preferences and
         // "subtitles off" carry over to the next channel.
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().clearOverrides().build()
-        player.setMediaSource(DefaultMediaSourceFactory(dataSource).createMediaSource(item))
+        learnedHeights.clear()
+        autoRetried = false
+        player.setMediaSource(
+            DefaultMediaSourceFactory(dataSource)
+                // Slow or flaky servers get more attempts before an error is reported.
+                .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(LOAD_RETRIES))
+                .createMediaSource(item),
+        )
         player.prepare()
         player.play()
+        startSlowTimer()
+    }
+
+    /** Never gives up on a slow channel; after a while the UI offers to keep waiting or move on. */
+    private fun startSlowTimer() {
         watchdog?.cancel()
         watchdog = scope.launch {
-            delay(25_000)
-            if (_state.value.status == PlaybackState.Status.Loading) fail("The stream took too long to respond.")
+            delay(SLOW_AFTER_MS)
+            if (_state.value.status == PlaybackState.Status.Loading) _state.update { it.copy(slow = true) }
         }
     }
 
     fun retry() = _state.value.channel?.let(::play)
+
+    /** "Keep waiting": hide the slow-loading hint and keep trying. */
+    fun keepWaiting() {
+        _state.update { it.copy(slow = false) }
+        startSlowTimer()
+    }
 
     fun togglePlay() {
         if (player.isPlaying) player.pause() else {
@@ -197,7 +241,7 @@ class PlayerController(
     private fun refreshTracks() {
         val groups = player.currentTracks.groups
         val params = player.trackSelectionParameters
-        val video = ArrayList<Pair<Format, TrackOption>>()
+        val video = ArrayList<VideoCandidate>()
         val audio = ArrayList<TrackOption>()
         val text = ArrayList<TrackOption>()
         groups.forEachIndexed { gi, g ->
@@ -206,19 +250,16 @@ class PlayerController(
                 val f = g.getTrackFormat(ti)
                 val id = "$gi:$ti"
                 when (g.type) {
-                    C.TRACK_TYPE_VIDEO -> if (f.height > 0) video += f to TrackOption(id, "${f.height}p", bitrate(f), g.isTrackSelected(ti))
+                    C.TRACK_TYPE_VIDEO -> video += VideoCandidate(id, f.height, rate(f), g.isTrackSelected(ti), f.id)
                     C.TRACK_TYPE_AUDIO -> audio += TrackOption(id, trackName(f, "Audio ${audio.size + 1}"), audioDetail(f), g.isTrackSelected(ti))
                     C.TRACK_TYPE_TEXT -> text += TrackOption(id, textName(f, text.size + 1), textDetail(f), g.isTrackSelected(ti))
                 }
             }
         }
-        val videoOptions = video
-            .sortedWith(compareByDescending<Pair<Format, TrackOption>> { it.first.height }.thenByDescending { it.first.bitrate })
-            .distinctBy { it.first.height to it.first.bitrate }
-            .map { it.second }
+        val videoOptions = QualityLogic.options(video, learnedHeights, player.videoFormat?.id)
         _state.update {
             it.copy(
-                video = if (videoOptions.size > 1) videoOptions else emptyList(),
+                video = videoOptions,
                 autoQuality = params.overrides.values.none { o -> o.type == C.TRACK_TYPE_VIDEO },
                 currentHeight = player.videoFormat?.height?.takeIf { h -> h > 0 } ?: it.currentHeight,
                 audio = audio,
@@ -314,13 +355,22 @@ class PlayerController(
 
     // ----------------------------------------------------------------- helpers
 
-    private fun fail(message: String) {
+    /** Shows an error. Only [definite] failures count towards marking the channel offline. */
+    private fun fail(message: String, definite: Boolean) {
         watchdog?.cancel()
         player.stop()
         val ch = _state.value.channel
-        _state.update { it.copy(status = PlaybackState.Status.Error, error = message, isPlaying = false) }
-        ch?.let { onHealth(it, false) }
+        _state.update { it.copy(status = PlaybackState.Status.Error, error = message, isPlaying = false, slow = false, reconnecting = false) }
+        if (definite) ch?.let { onHealth(it, false) }
     }
+
+    private fun httpStatus(e: PlaybackException): Int? =
+        (e.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode
+
+    private fun isDefinite(e: PlaybackException): Boolean = ErrorPolicy.isDefinite(
+        httpStatus(e),
+        unsupportedFormat = e.errorCode in UNSUPPORTED_CODES,
+    )
 
     private fun describe(e: PlaybackException): String {
         val cause = e.cause
@@ -344,10 +394,18 @@ class PlayerController(
     companion object {
         private val PROGRESSIVE = Regex("""\.(mp4|webm|mkv|mp3|aac|ogg|ts)(\?|$)""", RegexOption.IGNORE_CASE)
 
-        fun bitrate(f: Format): String? {
-            val b = f.bitrate.takeIf { it > 0 } ?: f.peakBitrate.takeIf { it > 0 } ?: f.averageBitrate.takeIf { it > 0 } ?: return null
-            return if (b >= 1_000_000) "%.1f Mbps".format(b / 1_000_000f) else "${b / 1000} kbps"
-        }
+        private const val LOAD_RETRIES = 6
+        private const val SLOW_AFTER_MS = 12_000L
+        private val UNSUPPORTED_CODES = setOf(
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        )
+
+        fun rate(f: Format): Int = f.bitrate.takeIf { it > 0 } ?: f.peakBitrate.takeIf { it > 0 } ?: f.averageBitrate
+
+        fun bitrate(f: Format): String? = QualityLogic.formatBitrate(rate(f))
 
         fun channelLabel(n: Int) = when (n) {
             1 -> "Mono"

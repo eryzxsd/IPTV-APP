@@ -180,7 +180,7 @@ fun ChannelsScreen(vm: MainViewModel, onOpenPlayer: (Channel) -> Unit, contentPa
                             clock = clock,
                             active = playback.channel?.id == c.id,
                             favorite = c.id in favorites,
-                            offline = lib.health[c.id] == false,
+                            offline = lib.isOffline(c.id),
                             onClick = { onOpenPlayer(c) },
                             onFavorite = { vm.toggleFavorite(c) },
                         )

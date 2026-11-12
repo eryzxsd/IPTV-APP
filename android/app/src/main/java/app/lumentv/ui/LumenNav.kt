@@ -136,6 +136,8 @@ private fun MiniPlayer(vm: MainViewModel, onOpen: () -> Unit, onResume: (Channel
                             when {
                                 playback.channel == null -> "Tap to resume"
                                 playback.status == PlaybackState.Status.Error -> "Can't play this channel"
+                                playback.reconnecting -> "Reconnecting…"
+                                playback.slow -> "Still connecting…"
                                 now != null -> now.title
                                 else -> "Live"
                             },

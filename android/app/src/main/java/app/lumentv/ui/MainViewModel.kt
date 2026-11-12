@@ -87,7 +87,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             is Filter.Group -> all.filter { f.name in it.groups }
             is Filter.Country -> all.filter { it.country == f.code }
         }
-        if (lib.hideOffline) list = list.filter { lib.health[it.id] != false }
+        if (lib.hideOffline) list = list.filter { !lib.isOffline(it.id) }
         val needle = q.trim().lowercase()
         if (needle.isNotEmpty()) {
             val now = System.currentTimeMillis()
