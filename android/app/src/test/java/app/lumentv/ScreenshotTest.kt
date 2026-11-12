@@ -4,7 +4,10 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -81,6 +84,28 @@ class ScreenshotTest {
         rule.onAllNodesWithText(ch.name).onFirst().performClick()
         rule.mainClock.advanceTimeBy(2_000)
         shot("5-player")
+
+        // Player option sheets.
+        rule.waitUntil(30_000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            vm.player.state.value.text.isNotEmpty() || vm.player.state.value.status == app.lumentv.ui.player.PlaybackState.Status.Error
+        }
+        fun openSheet(desc: String, name: String) {
+            // Controls auto-hide while playing; tap the video to show them.
+            if (rule.onAllNodes(hasContentDescription(desc)).fetchSemanticsNodes().isEmpty()) {
+                rule.onRoot().performTouchInput { click(Offset(centerX, 200f)) }
+                rule.mainClock.advanceTimeBy(500)
+            }
+            rule.onAllNodes(hasContentDescription(desc)).onFirst().performClick()
+            rule.mainClock.advanceTimeBy(1_500)
+            shot(name)
+            // The sheet is its own window: send Back to the focused window, not the activity.
+            androidx.test.espresso.Espresso.pressBack()
+            rule.mainClock.advanceTimeBy(1_500)
+        }
+        openSheet("Subtitles", "7-subtitles")
+        openSheet("Audio track", "8-audio")
+        openSheet("More options", "9-more")
         rule.activity.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.mainClock.advanceTimeBy(1_000)
         shot("6-favorites-miniplayer")

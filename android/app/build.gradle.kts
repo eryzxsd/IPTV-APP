@@ -67,6 +67,8 @@ android {
             }
             test.environment("LUMEN_REAL_DATA", System.getenv("LUMEN_REAL_DATA") ?: "")
             test.maxHeapSize = "3g"
+            // The JVM's regex engine recurses deeply on long HLS attribute lines (Android's ICU engine doesn't).
+            test.jvmArgs("-Xss8m")
         }
     }
 }

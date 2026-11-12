@@ -86,7 +86,9 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import app.lumentv.data.Channel
 import app.lumentv.data.Programme
 import app.lumentv.data.countryName
@@ -201,8 +203,11 @@ private fun BoxScope.VideoBox(
 ) {
     var controls by remember { mutableStateOf(true) }
     var poke by remember { mutableIntStateOf(0) }
-    LaunchedEffect(controls, poke, playback.isPlaying) {
-        if (controls && playback.isPlaying) {
+    var sheet by remember { mutableStateOf<PlayerSheet?>(null) }
+    val activity = LocalContext.current as? Activity
+    val pip = rememberPip(activity)
+    LaunchedEffect(controls, poke, playback.isPlaying, sheet) {
+        if (controls && playback.isPlaying && sheet == null) {
             delay(3500)
             controls = false
         }
@@ -215,11 +220,29 @@ private fun BoxScope.VideoBox(
                 useController = false
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 keepScreenOn = true
+                // Readable captions: white text on a translucent box, respecting system caption size.
+                subtitleView?.apply {
+                    setStyle(
+                        CaptionStyleCompat(
+                            android.graphics.Color.WHITE,
+                            0xA0000000.toInt(),
+                            android.graphics.Color.TRANSPARENT,
+                            CaptionStyleCompat.EDGE_TYPE_NONE,
+                            android.graphics.Color.BLACK,
+                            null,
+                        ),
+                    )
+                    setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 1.05f)
+                    setApplyEmbeddedStyles(false)
+                }
                 setShutterBackgroundColor(android.graphics.Color.BLACK)
                 layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             }
         },
-        update = { it.player = vm.player.player },
+        update = {
+            it.player = vm.player.player
+            it.resizeMode = playback.aspect.resizeMode
+        },
         modifier = Modifier
             .fillMaxSize()
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
@@ -251,7 +274,7 @@ private fun BoxScope.VideoBox(
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(channel.name, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                        LiveBadge()
+                        LiveIndicator(vm.player)
                     }
                     if (fullscreen && now != null) {
                         Text("${fmtTime(now.start)} – ${fmtTime(now.stop)} · ${now.title}", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -262,7 +285,6 @@ private fun BoxScope.VideoBox(
                         Icon(if (favorite) Icons.Rounded.Star else Icons.Rounded.StarOutline, "Favorite", tint = if (favorite) Color(0xFFFFC53D) else Color.White)
                     }
                 }
-                QualityMenu(playback, onPick = vm.player::setQuality)
             }
 
             // Centre controls
@@ -297,13 +319,15 @@ private fun BoxScope.VideoBox(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(start = 4.dp),
                     )
-                    IconButton(onClick = onFullscreen) {
+                    ControlButtons(playback, fullscreen, onSheet = { sheet = it; poke++ }, onPip = pip)
+                    IconButton(onClick = onFullscreen, modifier = Modifier.size(42.dp)) {
                         Icon(if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen, "Fullscreen", tint = Color.White)
                     }
                 }
             }
         }
     }
+    PlayerSheetHost(sheet, vm.player, playback, onSheet = { sheet = it; poke++ })
 }
 
 @Composable
@@ -312,25 +336,6 @@ private fun RoundIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, lab
         onClick = onClick,
         modifier = Modifier.size(48.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f)),
     ) { Icon(icon, label, tint = Color.White, modifier = Modifier.size(28.dp)) }
-}
-
-@Composable
-private fun QualityMenu(playback: PlaybackState, onPick: (Int?) -> Unit) {
-    if (playback.qualities.isEmpty()) return
-    var open by remember { mutableStateOf(false) }
-    Box {
-        AssistChip(
-            onClick = { open = true },
-            label = { Text(playback.selectedHeight?.let { "${it}p" } ?: "Auto", color = Color.White) },
-            colors = AssistChipDefaults.assistChipColors(containerColor = Color.Black.copy(alpha = 0.4f)),
-            border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = Color.White.copy(alpha = 0.3f)),
-            modifier = Modifier.padding(end = 8.dp),
-        )
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text("Auto") }, onClick = { onPick(null); open = false })
-            playback.qualities.forEach { q -> DropdownMenuItem(text = { Text(q.label) }, onClick = { onPick(q.height); open = false }) }
-        }
-    }
 }
 
 @Composable
