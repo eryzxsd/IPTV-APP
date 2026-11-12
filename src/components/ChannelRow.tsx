@@ -12,14 +12,15 @@ interface Props {
   clock: number;
   active: boolean;
   fav: boolean;
+  offline?: boolean;
   onPlay: (c: Channel) => void;
   onFav: (c: Channel) => void;
 }
 
-export const ChannelRow = memo(function ChannelRow({ channel, number, now, clock, active, fav, onPlay, onFav }: Props) {
+export const ChannelRow = memo(function ChannelRow({ channel, number, now, clock, active, fav, offline, onPlay, onFav }: Props) {
   return (
     <div
-      className={`channel-row ${active ? 'active' : ''}`}
+      className={`channel-row ${active ? 'active' : ''} ${offline && !active ? 'offline' : ''}`}
       onClick={() => onPlay(channel)}
       role="button"
       tabIndex={0}
@@ -31,6 +32,15 @@ export const ChannelRow = memo(function ChannelRow({ channel, number, now, clock
         <div className="ch-name">
           <span className="truncate">{channel.name}</span>
           {channel.country && <span className="ch-flag" title={channel.country}>{flag(channel.country)}</span>}
+          {offline ? (
+            <span className="tag tag-bad">Offline</span>
+          ) : (
+            <>
+              {channel.quality && <span className="tag">{channel.quality}</span>}
+              {channel.geoBlocked && <span className="tag tag-warn" title="Geo-blocked: may only work in its home country">Geo</span>}
+              {channel.not247 && <span className="tag" title="Not broadcasting 24/7">Part-time</span>}
+            </>
+          )}
         </div>
         {now ? (
           <>

@@ -43,7 +43,11 @@ export function parseM3U(text: string, source = 0): Channel[] {
     if (!info) continue;
 
     const { attrs } = info;
-    const name = (info.name || attrs['tvg-name'] || 'Unknown').trim();
+    const rawName = (info.name || attrs['tvg-name'] || 'Unknown').trim();
+    const quality = rawName.match(/\((\d{3,4}[pi])\)/i)?.[1];
+    const geoBlocked = /\[geo-?blocked\]/i.test(rawName);
+    const not247 = /\[not 24\/7\]/i.test(rawName);
+    const name = rawName.replace(/\(\d{3,4}[pi]\)|\[(geo-?blocked|not 24\/7)\]/gi, '').replace(/\s+/g, ' ').trim() || rawName;
     const tvgId = (attrs['tvg-id'] || '').trim();
     const groups = (attrs['group-title'] || '')
       .split(';')
@@ -51,7 +55,7 @@ export function parseM3U(text: string, source = 0): Channel[] {
       .filter((g) => g && g.toLowerCase() !== 'undefined');
     const epgKey = tvgId ? normId(tvgId) : `n:${normName(name)}`;
     out.push({
-      id: hash(`${source}|${tvgId || name}|${line}`),
+      id: hash(`${source}|${tvgId || rawName}|${line}`),
       name,
       logo: attrs['tvg-logo'] || '',
       groups: groups.length ? groups : ['Other'],
@@ -59,6 +63,9 @@ export function parseM3U(text: string, source = 0): Channel[] {
       epgKey,
       country: countryFromTvgId(tvgId),
       url: line,
+      quality,
+      geoBlocked: geoBlocked || undefined,
+      not247: not247 || undefined,
       source,
     });
     info = null;

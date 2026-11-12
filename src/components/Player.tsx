@@ -17,6 +17,8 @@ interface Props {
   onToggleFav: () => void;
   onPrev: () => void;
   onNext: () => void;
+  /** Reports whether a channel's stream works, so the list can flag dead ones. */
+  onHealth?: (id: string, ok: boolean) => void;
 }
 
 type Status = 'idle' | 'loading' | 'playing' | 'error';
@@ -26,7 +28,7 @@ interface Level {
   label: string;
 }
 
-export function Player({ channel, now, next, clock, proxyMode, proxyAvailable, isFav, onToggleFav, onPrev, onNext }: Props) {
+export function Player({ channel, now, next, clock, proxyMode, proxyAvailable, isFav, onToggleFav, onPrev, onNext, onHealth }: Props) {
   const wrap = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -42,6 +44,8 @@ export function Player({ channel, now, next, clock, proxyMode, proxyAvailable, i
   const [via, setVia] = useState<'direct' | 'proxy'>('direct');
   const [attempt, setAttempt] = useState(0);
   const hideTimer = useRef<number>(0);
+  const healthRef = useRef(onHealth);
+  healthRef.current = onHealth;
 
   // Load the stream whenever the channel changes (or a retry is requested).
   useEffect(() => {
@@ -79,6 +83,7 @@ export function Player({ channel, now, next, clock, proxyMode, proxyAvailable, i
         cleanup();
         setStatus('error');
         setErrorMsg(msg);
+        healthRef.current?.(channel.id, false);
       }
     };
 
@@ -124,6 +129,7 @@ export function Player({ channel, now, next, clock, proxyMode, proxyAvailable, i
       clearTimeout(stallTimer);
       setStatus('playing');
       setPaused(false);
+      healthRef.current?.(channel.id, true);
     };
     const onError = () => {
       if (!hlsRef.current) fail('This stream format is not supported by your browser.');
@@ -249,7 +255,10 @@ export function Player({ channel, now, next, clock, proxyMode, proxyAvailable, i
         <div className="player-overlay error">
           <Icon name="alert" size={36} />
           <h3>Can't play this channel</h3>
-          <p>{errorMsg}</p>
+          <p>
+            {errorMsg}
+            {channel.geoBlocked && ' This channel is marked as geo-blocked, so it may only work in its home country.'}
+          </p>
           <div className="row gap">
             <button className="btn" onClick={() => setAttempt((a) => a + 1)}>
               <Icon name="refresh" size={16} /> Retry
@@ -265,8 +274,9 @@ export function Player({ channel, now, next, clock, proxyMode, proxyAvailable, i
         <ChannelLogo src={channel.logo} name={channel.name} size={40} />
         <div className="player-title">
           <div className="name">
-            {channel.name}
+            <span className="truncate">{channel.name}</span>
             <span className="live-badge">LIVE</span>
+            {channel.quality && <span className="q-badge">{channel.quality}</span>}
           </div>
           {now && (
             <div className="sub">

@@ -10,6 +10,10 @@ export interface Channel {
   /** ISO 3166 alpha-2 country code (upper case) or '' */
   country: string;
   url: string;
+  /** e.g. 1080p */
+  quality?: string;
+  geoBlocked?: boolean;
+  not247?: boolean;
   /** Source playlist index */
   source: number;
 }

@@ -28,6 +28,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [proxyAvailable, setProxyAvailable] = useState<boolean | null>(null);
   const [current, setCurrent] = useState<Channel | null>(null);
+  const [health, setHealth] = useLocalStorage<Record<string, 0 | 1>>('lumen.health', {});
+  const [hideOffline, setHideOffline] = useLocalStorage<boolean>('lumen.hideOffline', false);
   const listRef = useRef<VirtualListHandle>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const clock = useNow(30_000);
@@ -35,6 +37,13 @@ export default function App() {
   useEffect(() => {
     detectProxy().then(setProxyAvailable);
   }, []);
+
+  // Earlier builds pointed at epgshare01 file names that don't exist.
+  useEffect(() => {
+    const fix: Record<string, string> = { US1: 'US2', CA1: 'CA2', BE1: 'BE2', US_LOCALS2: 'US_LOCALS1' };
+    const urls = settings.epgUrls.map((u) => u.replace(/epg_ripper_([A-Z_]+\d)\.xml\.gz$/, (all, c: string) => (fix[c] ? `epg_ripper_${fix[c]}.xml.gz` : all)));
+    if (urls.some((u, i) => u !== settings.epgUrls[i])) setSettings({ ...settings, epgUrls: urls });
+  }, [settings, setSettings]);
 
   const { channels, loading, error, reload } = usePlaylists(settings, proxyAvailable);
   const { data: epg, progress: epgProgress, reload: reloadEpg } = useEpg(channels, settings, proxyAvailable);
@@ -77,6 +86,7 @@ export default function App() {
       default:
         list = channels;
     }
+    if (hideOffline) list = list.filter((c) => health[c.id] !== 0 || c.id === current?.id);
     const q = query.trim().toLowerCase();
     if (q) {
       list = list.filter((c) => {
@@ -86,7 +96,7 @@ export default function App() {
       });
     }
     return list;
-  }, [filter, favorites, recent, channels, byId, query, epg, clock]);
+  }, [filter, favorites, recent, channels, byId, query, epg, clock, hideOffline, health, current]);
 
   const play = useCallback(
     (c: Channel) => {
@@ -95,6 +105,18 @@ export default function App() {
       setRecent((r) => [c.id, ...r.filter((x) => x !== c.id)].slice(0, 30));
     },
     [setLastId, setRecent],
+  );
+
+  const reportHealth = useCallback(
+    (id: string, ok: boolean) =>
+      setHealth((h) => {
+        if (h[id] === (ok ? 1 : 0)) return h;
+        const next = { ...h, [id]: (ok ? 1 : 0) as 0 | 1 };
+        const keys = Object.keys(next);
+        if (keys.length > 3000) for (const k of keys.slice(0, keys.length - 3000)) delete next[k];
+        return next;
+      }),
+    [setHealth],
   );
 
   const toggleFav = useCallback(
@@ -214,9 +236,18 @@ export default function App() {
                     {loading ? 'Loading…' : `${filtered.length.toLocaleString()} channel${filtered.length === 1 ? '' : 's'}`}
                   </span>
                 </div>
-                <button className="icon-btn" onClick={reload} title="Reload playlist">
-                  <Icon name="refresh" size={16} />
-                </button>
+                <div className="row">
+                  <button
+                    className={`chip small-chip ${hideOffline ? 'on' : ''}`}
+                    onClick={() => setHideOffline((v) => !v)}
+                    title="Hide channels whose stream failed when you tried them"
+                  >
+                    {hideOffline && <Icon name="check" size={12} />} Hide offline
+                  </button>
+                  <button className="icon-btn" onClick={reload} title="Reload playlist">
+                    <Icon name="refresh" size={16} />
+                  </button>
+                </div>
               </div>
               {loading ? (
                 <div className="skeletons">
@@ -245,6 +276,7 @@ export default function App() {
                         clock={clock}
                         active={current?.id === c.id}
                         fav={favSet.has(c.id)}
+                        offline={health[c.id] === 0}
                         onPlay={play}
                         onFav={toggleFav}
                       />
@@ -287,6 +319,7 @@ export default function App() {
                 onToggleFav={() => current && toggleFav(current)}
                 onPrev={prev}
                 onNext={next}
+                onHealth={reportHealth}
               />
               <Schedule channel={current} programmes={current ? epg[current.epgKey] : undefined} clock={clock} epgProgress={epgProgress} />
             </main>

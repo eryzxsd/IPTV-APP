@@ -223,6 +223,14 @@ kbd {
   gap: 8px;
   margin: 10px 0;
 }
+.chip-heading {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-top: 12px;
+}
 .pill {
   display: inline-flex;
   align-items: center;
@@ -635,6 +643,44 @@ kbd {
   gap: 6px;
   font-weight: 600;
   font-size: 14px;
+}
+.tag {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-3);
+}
+.tag-warn {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--warn);
+}
+.tag-bad {
+  background: rgba(255, 77, 109, 0.14);
+  color: var(--live);
+}
+.channel-row.offline .logo,
+.channel-row.offline .ch-name > .truncate,
+.channel-row.offline .ch-now {
+  opacity: 0.45;
+}
+.small-chip {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  margin-right: 2px;
+}
+.q-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  flex-shrink: 0;
 }
 .ch-flag {
   font-size: 12px;

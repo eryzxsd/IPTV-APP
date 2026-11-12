@@ -10,47 +10,35 @@ export const IPTV_ORG_PLAYLISTS = [
 export const EPGSHARE_BASE = 'https://epgshare01.online/epgshare01/';
 export const epgshareUrl = (code: string) => `${EPGSHARE_BASE}epg_ripper_${code}.xml.gz`;
 
-/** A selection of epgshare01 region files. */
-export const EPGSHARE_REGIONS: { code: string; label: string }[] = [
-  { code: 'US1', label: 'United States' },
-  { code: 'US_LOCALS2', label: 'US Locals' },
-  { code: 'UK1', label: 'United Kingdom' },
-  { code: 'CA1', label: 'Canada' },
-  { code: 'AU1', label: 'Australia' },
-  { code: 'NZ1', label: 'New Zealand' },
-  { code: 'IE1', label: 'Ireland' },
-  { code: 'IN1', label: 'India' },
-  { code: 'DE1', label: 'Germany' },
-  { code: 'FR1', label: 'France' },
-  { code: 'IT1', label: 'Italy' },
-  { code: 'ES1', label: 'Spain' },
-  { code: 'PT1', label: 'Portugal' },
-  { code: 'NL1', label: 'Netherlands' },
-  { code: 'BE1', label: 'Belgium' },
-  { code: 'CH1', label: 'Switzerland' },
-  { code: 'PL1', label: 'Poland' },
-  { code: 'SE1', label: 'Sweden' },
-  { code: 'NO1', label: 'Norway' },
-  { code: 'DK1', label: 'Denmark' },
-  { code: 'FI1', label: 'Finland' },
-  { code: 'TR1', label: 'Turkey' },
-  { code: 'GR1', label: 'Greece' },
-  { code: 'BR1', label: 'Brazil' },
-  { code: 'MX1', label: 'Mexico' },
-  { code: 'AR1', label: 'Argentina' },
-  { code: 'ZA1', label: 'South Africa' },
-  { code: 'PH1', label: 'Philippines' },
-  { code: 'MY1', label: 'Malaysia' },
-  { code: 'SG1', label: 'Singapore' },
-  { code: 'ID1', label: 'Indonesia' },
-  { code: 'JP1', label: 'Japan' },
-  { code: 'KR1', label: 'South Korea' },
-  { code: 'ALL_SOURCES1', label: 'Everything (very large)' },
+/**
+ * epgshare01 files (from https://epgshare01.online/epgshare01/).
+ * Country files are labelled with their country name; the number is the
+ * file variant some countries have more than one of.
+ */
+const COUNTRY_FILES = ['AE1', 'AL1', 'AR1', 'AT1', 'AU1', 'BA1', 'BB1', 'BE2', 'BG1', 'BR1', 'BR2', 'CA2', 'CH1', 'CL1', 'CO1', 'CR1', 'CY1', 'CZ1', 'DE1', 'DK1', 'DO1', 'EC1', 'EG1', 'ES1', 'FI1', 'FR1', 'GR1', 'HK1', 'HR1', 'HU1', 'ID1', 'IE1', 'IL1', 'IN1', 'IN2', 'IN4', 'IT1', 'JM1', 'JP1', 'JP2', 'KE1', 'KR1', 'KZ1', 'LT1', 'LU1', 'LV1', 'MN1', 'MT1', 'MX1', 'MY1', 'NG1', 'NL1', 'NO1', 'NZ1', 'PA1', 'PE1', 'PH1', 'PH2', 'PK1', 'PL1', 'PT1', 'RO1', 'RO2', 'RS1', 'SA1', 'SA2', 'SE1', 'SG1', 'SK1', 'SV1', 'TH1', 'TR1', 'TR3', 'UA1', 'UK1', 'US2', 'US_LOCALS1', 'US_SPORTS1', 'UY1', 'VN1', 'ZA1'];
+
+const regionName = (() => {
+  try {
+    const dn = new Intl.DisplayNames(['en'], { type: 'region' });
+    return (c: string) => dn.of(c === 'UK' ? 'GB' : c) || c;
+  } catch {
+    return (c: string) => c;
+  }
+})();
+
+export const EPGSHARE_REGIONS: { code: string; label: string; kind: 'country' | 'service' }[] = [
+  ...COUNTRY_FILES.map((code) => {
+    const m = code.match(/^([A-Z]{2})(_[A-Z]+)?(\d)$/)!;
+    const extra = m[2] === '_LOCALS' ? ' Locals' : m[2] === '_SPORTS' ? ' Sports' : '';
+    const same = COUNTRY_FILES.filter((c) => c.startsWith(m[1]) && !c.includes('_') && !m[2]).length > 1;
+    return { code, label: `${regionName(m[1])}${extra}${same ? ` ${m[3]}` : ''}`, kind: 'country' as const };
+  }).sort((a, b) => a.label.localeCompare(b.label)),
+  ...([['PLEX1', 'Plex'], ['DISTROTV1', 'DistroTV'], ['RAKUTEN1', 'Rakuten TV'], ['PEACOCK1', 'Peacock'], ['AMCCHANNELS1', 'AMC'], ['ALJAZEERA1', 'Al Jazeera'], ['BEIN1', 'beIN Sports'], ['VOA1', 'Voice of America'], ['TBNPLUS1', 'TBN+'], ['WHALETVPLUS1', 'Whale TV+'], ['ASIANTELEVISION1', 'Asian Television'], ['MUSICBOX1', 'Music Box'], ['DELUXEMUSIC1', 'Deluxe Music'], ['RALLY_TV1', 'Rally TV'], ['DIRECTVSPORTS1', 'DirecTV Sports'], ['ALL_SOURCES1', 'Everything (≈200 MB)']] as const).map(([code, label]) => ({ code, label, kind: 'service' as const })),
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
   playlists: [IPTV_ORG_PLAYLISTS[0].url],
-  epgUrls: ['US1', 'UK1', 'CA1', 'AU1'].map(epgshareUrl),
+  epgUrls: ['US2', 'UK1', 'CA2', 'AU1', 'PLEX1', 'DISTROTV1'].map(epgshareUrl),
   epgEnabled: true,
   proxyMode: 'auto',
 };

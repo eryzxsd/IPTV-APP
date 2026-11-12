@@ -90,13 +90,18 @@ export function SettingsModal({ settings, proxyAvailable, onSave, onClose }: Pro
               Guide data from <a href="https://epgshare01.online/" target="_blank" rel="noreferrer">epgshare01</a>. Pick the regions you
               watch — each file is several MB, so fewer regions load faster.
             </p>
-            <div className="chips">
-              {EPGSHARE_REGIONS.map((r) => (
-                <button key={r.code} className={`chip ${regions.has(r.code) ? 'on' : ''}`} onClick={() => toggleRegion(r.code)} disabled={!epgEnabled}>
-                  {regions.has(r.code) && <Icon name="check" size={12} />} {r.label}
-                </button>
-              ))}
-            </div>
+            {(['country', 'service'] as const).map((kind) => (
+              <div key={kind}>
+                <div className="chip-heading">{kind === 'country' ? 'Countries' : 'Streaming services & networks'}</div>
+                <div className="chips">
+                  {EPGSHARE_REGIONS.filter((r) => r.kind === kind).map((r) => (
+                    <button key={r.code} className={`chip ${regions.has(r.code) ? 'on' : ''}`} onClick={() => toggleRegion(r.code)} disabled={!epgEnabled}>
+                      {regions.has(r.code) && <Icon name="check" size={12} />} {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
             <p className="muted small">Additional XMLTV URLs (.xml or .xml.gz), one per line:</p>
             <textarea rows={2} value={customEpg} onChange={(e) => setCustomEpg(e.target.value)} spellCheck={false} disabled={!epgEnabled} placeholder="https://example.com/guide.xml.gz" />
           </section>

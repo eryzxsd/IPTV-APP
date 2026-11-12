@@ -5,8 +5,14 @@ A modern web IPTV player. It loads the **[iptv-org](https://github.com/iptv-org/
 
 ## Features
 
-- **Default sources**: `https://iptv-org.github.io/iptv/index.m3u` for channels, and epgshare01 XMLTV files
-  (US, UK, CA and AU to start; you can pick 30+ regions in Settings).
+- **Default sources**: `https://iptv-org.github.io/iptv/index.m3u` for channels, and these epgshare01 XMLTV files:
+  US, UK, Canada, Australia, Plex and DistroTV (about 24 MB in total). You can turn on any of the 80+ country files
+  and 15 service files in Settings.
+- **Guide matching**: epgshare01 uses its own channel IDs (e.g. `CNBC.HD.us2`), so channels are matched by name.
+  Exact names and the same country score higher, and East-coast feeds are preferred over Pacific or +1 feeds.
+  Each channel gets the single best guide match.
+- **Dead stream marking**: channels whose stream failed are marked *Offline* and can be hidden. Resolution,
+  geo-blocked and part-time tags from iptv-org show as small badges.
 - **Live view**: a channel list that stays fast with 10k+ channels, with logos, flags, what's on now and a progress bar.
   Next to it are the player and a now/next panel with the day's schedule.
 - **TV guide**: a timeline grid with a "now" line, sticky channel column, show details on hover, and click to watch.
@@ -34,6 +40,8 @@ Browsers block many IPTV streams and the epgshare01 files because of CORS rules.
 `http://` streams on `https://` pages. Both `npm run dev` and `npm start` include a small proxy at `/proxy/...`.
 The app uses it on its own when a direct request fails (Settings → Proxy: Auto / Always / Never).
 The proxy rewrites HLS manifests so video segments go through it too. It refuses private and local network addresses.
+
+Behind a corporate HTTP proxy, start the server with `NODE_USE_ENV_PROXY=1 npm start` so Node uses `HTTPS_PROXY`.
 
 You can host `dist/` as a plain static site. Without the proxy, only CORS-enabled sources will load.
 

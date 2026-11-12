@@ -7,8 +7,8 @@ import { normId, normName } from './m3u';
 
 export interface EpgRequest {
   urls: string[];
-  /** epgKey -> channel name, for every channel in the playlist */
-  wanted: [string, string][];
+  /** [epgKey, channel name, country] for every distinct channel in the playlist */
+  wanted: [string, string, string][];
   proxyMode: ProxyMode;
   proxyAvailable: boolean;
 }
@@ -18,12 +18,31 @@ const AHEAD = 48 * 3600_000;
 
 const post = (msg: unknown) => (self as unknown as DedicatedWorkerGlobalScope).postMessage(msg);
 
+/** lower-case alphanumerics only, keeping everything (used for "exact" name matches) */
+const loose = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+const ALT_FEED = /\b(pacific|west|mountain|central|east\s*\+|\+\s*1|plus\s*1|timeshift)\b|\+1/i;
+
+/** epgshare01 ids look like `CNBC.HD.us2` / `TLC.HD.uk` — returns [name part, country]. */
+function splitEpgId(id: string): [string, string] {
+  const m = id.match(/^(.*)\.([a-z]{2})\d*$/i);
+  if (!m) return [id, ''];
+  const c = m[2].toUpperCase();
+  return [m[1].replace(/\./g, ' '), c === 'UK' ? 'GB' : c];
+}
+
+interface Best {
+  src: number;
+  id: string;
+  score: number;
+}
+
 self.onmessage = async (e: MessageEvent<EpgRequest>) => {
   const { urls, wanted, proxyMode, proxyAvailable } = e.data;
-  const ids = new Set<string>();
+  const info = new Map<string, { name: string; loose: string; country: string }>();
   const byName = new Map<string, string[]>();
-  for (const [key, name] of wanted) {
-    ids.add(key);
+  for (const [key, name, country] of wanted) {
+    const base = name.replace(/\(\d+p\)|\[[^\]]*\]/gi, '');
+    info.set(key, { name, loose: loose(base), country });
     const n = key.startsWith('n:') ? key.slice(2) : normName(name);
     if (!n) continue;
     const arr = byName.get(n);
@@ -32,6 +51,8 @@ self.onmessage = async (e: MessageEvent<EpgRequest>) => {
     } else byName.set(n, [key]);
   }
 
+  // For every playlist channel we keep exactly one EPG channel: the best match.
+  const best = new Map<string, Best>();
   const data: EpgData = {};
   const errors: string[] = [];
   let total = 0;
@@ -58,10 +79,31 @@ self.onmessage = async (e: MessageEvent<EpgRequest>) => {
         }),
       );
       const text = (await maybeGunzip(counted)).pipeThrough(new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>);
-      const mapping = new Map<string, string[]>(); // xmltv channel id -> epgKeys
+      // xmltv channel id -> playlist keys this channel won in this file
+      const winners = new Map<string, string[]>();
+      let channelsDone = false;
       const reader = text.getReader();
       let buf = '';
       const re = /<(channel|programme)\b([^>]*)>([\s\S]*?)<\/\1>/g;
+
+      const consider = (key: string, id: string, score: number) => {
+        const cur = best.get(key);
+        if (score < 40 || (cur && cur.score >= score)) return;
+        best.set(key, { src: i, id, score });
+      };
+
+      const finishChannels = () => {
+        channelsDone = true;
+        for (const [key, b] of best) {
+          if (b.src !== i) continue;
+          // A better match from this file replaces data gathered from earlier files.
+          delete data[key];
+          const arr = winners.get(b.id);
+          if (arr) arr.push(key);
+          else winners.set(b.id, [key]);
+        }
+      };
+
       for (;;) {
         const { value, done } = await reader.read();
         if (value) buf += value;
@@ -74,19 +116,28 @@ self.onmessage = async (e: MessageEvent<EpgRequest>) => {
           if (m[1] === 'channel') {
             const id = attr(attrs, 'id');
             if (!id) continue;
-            const keys = new Set<string>();
             const k = normId(id);
-            if (ids.has(k)) keys.add(k);
-            for (const dn of m[3].matchAll(/<display-name[^>]*>([\s\S]*?)<\/display-name>/g)) {
-              const n = normName(decode(dn[1]));
-              const ks = byName.get(n);
-              if (ks) ks.forEach((x) => keys.add(x));
-              if (ids.has(`n:${n}`)) keys.add(`n:${n}`);
+            if (info.has(k)) consider(k, id, 100);
+            const [idName, epgCountry] = splitEpgId(id);
+            const names = [...m[3].matchAll(/<display-name[^>]*>([\s\S]*?)<\/display-name>/g)].map((d) => decode(d[1]));
+            names.push(idName);
+            for (const dn of names) {
+              const n = normName(dn);
+              const keys = [...(byName.get(n) || [])];
+              if (info.has(`n:${n}`)) keys.push(`n:${n}`);
+              for (const key of keys) {
+                const ch = info.get(key)!;
+                let score = 50;
+                if (loose(dn) === ch.loose) score += 10;
+                if (epgCountry && ch.country) score += epgCountry === ch.country ? 15 : -20;
+                if (ALT_FEED.test(dn) && !ALT_FEED.test(ch.name)) score -= 15;
+                consider(key, id, score);
+              }
             }
-            if (keys.size) mapping.set(id, [...keys]);
           } else {
-            const keys = mapping.get(attr(attrs, 'channel')) ?? matchLoose(attr(attrs, 'channel'), ids, mapping);
-            if (!keys || !keys.length) continue;
+            if (!channelsDone) finishChannels();
+            const keys = winners.get(attr(attrs, 'channel'));
+            if (!keys) continue;
             const start = parseTime(attr(attrs, 'start'));
             const stop = parseTime(attr(attrs, 'stop'));
             if (!start || !stop || stop < from || start > to) continue;
@@ -112,20 +163,11 @@ self.onmessage = async (e: MessageEvent<EpgRequest>) => {
 
   for (const k in data) {
     const list = data[k].sort((a, b) => a.start - b.start);
-    // drop duplicates (same channel in several sources)
     data[k] = list.filter((p, i) => i === 0 || p.start !== list[i - 1].start);
+    if (!data[k].length) delete data[k];
   }
   post({ type: 'done', data, errors, programmes: total });
 };
-
-/** Programmes for channels whose <channel> entry was missing. */
-function matchLoose(id: string, ids: Set<string>, mapping: Map<string, string[]>): string[] | undefined {
-  if (!id) return undefined;
-  const k = normId(id);
-  const res = ids.has(k) ? [k] : undefined;
-  mapping.set(id, res ?? []);
-  return res;
-}
 
 async function maybeGunzip(stream: ReadableStream<Uint8Array>): Promise<ReadableStream<Uint8Array>> {
   const reader = stream.getReader();

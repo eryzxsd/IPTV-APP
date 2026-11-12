@@ -51,7 +51,7 @@ export function usePlaylists(settings: Settings, proxyAvailable: boolean | null)
     if (proxyAvailable === null) return;
     const ctrl = new AbortController();
     const urls = settings.playlists.filter(Boolean);
-    const key = `pl:${urls.join('|')}`;
+    const key = `pl2:${urls.join('|')}`;
     setLoading(true);
     setError(null);
     (async () => {
@@ -110,9 +110,9 @@ export function useEpg(channels: Channel[], settings: Settings, proxyAvailable: 
       setProgress({ phase: 'idle' });
       return;
     }
-    const wantedMap = new Map<string, string>();
-    for (const c of channels) if (!wantedMap.has(c.epgKey)) wantedMap.set(c.epgKey, c.name);
-    const key = `epg:${settings.epgUrls.join('|')}:${wantedMap.size}`;
+    const wantedMap = new Map<string, [string, string, string]>();
+    for (const c of channels) if (!wantedMap.has(c.epgKey)) wantedMap.set(c.epgKey, [c.epgKey, c.name, c.country]);
+    const key = `epg2:${settings.epgUrls.join('|')}:${wantedMap.size}`;
     let worker: Worker | null = null;
     let cancelled = false;
 
@@ -142,7 +142,7 @@ export function useEpg(channels: Channel[], settings: Settings, proxyAvailable: 
       worker.onerror = (e) => setProgress({ phase: 'error', errors: [e.message || 'Worker failed'] });
       const req: EpgRequest = {
         urls: settings.epgUrls,
-        wanted: [...wantedMap],
+        wanted: [...wantedMap.values()],
         proxyMode: settings.proxyMode,
         proxyAvailable: !!proxyAvailable,
       };

@@ -37,7 +37,13 @@ async function assertPublicHost(hostname) {
   if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.internal')) {
     throw new Error('blocked host');
   }
-  const addrs = net.isIP(host) ? [{ address: host }] : await lookup(host, { all: true });
+  let addrs;
+  try {
+    addrs = net.isIP(host) ? [{ address: host }] : await lookup(host, { all: true });
+  } catch {
+    // Unresolvable here (e.g. DNS is handled by an outbound HTTP proxy): let fetch decide.
+    return;
+  }
   if (addrs.some((a) => isPrivateIp(a.address))) throw new Error('blocked host');
 }
 
