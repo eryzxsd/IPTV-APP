@@ -53,13 +53,13 @@ class Repository(context: Context, private val http: OkHttpClient) {
         all
     }
 
-    suspend fun loadEpg(channels: List<Channel>, urls: List<String>, force: Boolean): EpgData = withContext(Dispatchers.IO) {
+    suspend fun loadEpg(channels: List<Channel>, urls: List<String>, force: Boolean, ttlHours: Int = 4): EpgData = withContext(Dispatchers.IO) {
         if (urls.isEmpty() || channels.isEmpty()) {
             _epgState.value = LoadState.Idle
             return@withContext emptyMap()
         }
         val key = "v1|" + urls.joinToString("|") + "|" + channels.size
-        if (!force) readCache<Map<String, List<Programme>>>("epg.json", key, EPG_TTL)?.let {
+        if (!force) readCache<Map<String, List<Programme>>>("epg.json", key, ttlHours * HOUR)?.let {
             _epgState.value = LoadState.Done()
             return@withContext it
         }
@@ -149,7 +149,6 @@ class Repository(context: Context, private val http: OkHttpClient) {
     companion object {
         private const val HOUR = 3_600_000L
         private const val PLAYLIST_TTL = 6 * HOUR
-        private const val EPG_TTL = 4 * HOUR
         const val USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
     }

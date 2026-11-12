@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.OkHttpClient
 
 /** One selectable track. [id] is "groupIndex:trackIndex" within the current [Tracks]. */
@@ -73,6 +74,8 @@ data class PlaybackState(
     val slow: Boolean = false,
     /** Silently reconnecting after a network hiccup. */
     val reconnecting: Boolean = false,
+    /** Looking up the resolutions of quality options the stream doesn't label. */
+    val probingQualities: Boolean = false,
 ) {
     enum class Status { Idle, Loading, Playing, Error }
 }
@@ -86,10 +89,19 @@ class PlayerController(
     context: Context,
     private val http: OkHttpClient,
     private val scope: CoroutineScope,
+    buffer: app.lumentv.data.BufferMode,
     private val onHealth: (Channel, Boolean) -> Unit,
 ) {
     val player: ExoPlayer = ExoPlayer.Builder(context)
-        .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(8_000, 30_000, 1_500, 3_000).build())
+        .setLoadControl(
+            DefaultLoadControl.Builder().apply {
+                when (buffer) {
+                    app.lumentv.data.BufferMode.Fast -> setBufferDurationsMs(2_500, 20_000, 1_000, 2_000)
+                    app.lumentv.data.BufferMode.Balanced -> setBufferDurationsMs(8_000, 30_000, 1_500, 3_000)
+                    app.lumentv.data.BufferMode.Smooth -> setBufferDurationsMs(20_000, 60_000, 3_000, 6_000)
+                }
+            }.build(),
+        )
         .build()
         .apply {
             playWhenReady = true
@@ -110,6 +122,32 @@ class PlayerController(
     /** The variant currently being downloaded (from the media source, not the decoder). */
     private var currentVariant: Format? = null
     private var autoRetried = false
+    private val probe = app.lumentv.data.ResolutionProbe(http)
+    private var probeJob: Job? = null
+    /** Settings > Look up resolutions. */
+    var probeEnabled = true
+    private var appliedPrefs: app.lumentv.data.AppPrefs? = null
+
+    /** Applies Settings. Only changed values are applied, so choices made in the player stick. */
+    fun applyPrefs(p: app.lumentv.data.AppPrefs) {
+        val old = appliedPrefs
+        appliedPrefs = p
+        probeEnabled = p.lookUpResolutions
+        if (old == null || old.maxQuality != p.maxQuality) {
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().apply {
+                if (p.maxQuality > 0) setMaxVideoSize(Int.MAX_VALUE, p.maxQuality) else clearVideoSizeConstraints()
+            }.build()
+        }
+        if (old == null || old.subtitlesByDefault != p.subtitlesByDefault) {
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !p.subtitlesByDefault)
+                .build()
+            refreshTracks()
+        }
+        if (old == null || old.defaultAspect != p.defaultAspect) {
+            AspectMode.entries.firstOrNull { it.name == p.defaultAspect }?.let { setAspect(it) }
+        }
+    }
 
     init {
         player.addListener(object : Player.Listener {
@@ -193,6 +231,7 @@ class PlayerController(
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().clearOverrides().build()
         learnedSizes.clear()
         currentVariant = null
+        probeJob?.cancel()
         autoRetried = false
         player.setMediaSource(
             DefaultMediaSourceFactory(dataSource)
@@ -302,6 +341,42 @@ class PlayerController(
         val (gi, ti) = id.split(':').map { it.toIntOrNull() ?: return null }
         val g = player.currentTracks.groups.getOrNull(gi) ?: return null
         return if (ti < g.length) g to ti else null
+    }
+
+    /**
+     * Finds the real resolution of quality options the manifest doesn't label, by reading
+     * a small part of one segment of each (a few hundred KB each). Runs once per channel.
+     */
+    fun probeQualities() {
+        if (!probeEnabled || probeJob?.isActive == true) return
+        val manifest = player.currentManifest as? androidx.media3.exoplayer.hls.HlsManifest ?: return
+        val channel = _state.value.channel ?: return
+        val todo = manifest.multivariantPlaylist.variants.filter { v ->
+            v.format.height <= 0 && !learnedSizes.containsKey(variantKey(v.format))
+        }
+        if (todo.isEmpty()) return
+        val headers = buildMap {
+            put("User-Agent", channel.userAgent ?: Repository.USER_AGENT)
+            channel.referrer?.let { put("Referer", it) }
+        }
+        _state.update { it.copy(probingQualities = true) }
+        probeJob = scope.launch {
+            val gate = kotlinx.coroutines.sync.Semaphore(3)
+            kotlinx.coroutines.coroutineScope {
+                todo.forEach { v ->
+                    launch {
+                        val size = gate.withPermit {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { probe.probe(v.url.toString(), headers) }
+                        }
+                        if (size != null && _state.value.channel?.id == channel.id) {
+                            learnedSizes[variantKey(v.format)] = size
+                            refreshTracks()
+                        }
+                    }
+                }
+            }
+            _state.update { it.copy(probingQualities = false) }
+        }
     }
 
     /** null = automatic quality. */

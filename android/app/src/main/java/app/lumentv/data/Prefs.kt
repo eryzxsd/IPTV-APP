@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -35,6 +36,29 @@ data class Library(
     fun isOffline(id: String, now: Long = System.currentTimeMillis()) = HealthPolicy.isOffline(health[id], now)
 }
 
+enum class BufferMode(val label: String, val detail: String) {
+    Fast("Faster start", "Starts quickly, may pause on slow connections"),
+    Balanced("Balanced", "Recommended"),
+    Smooth("Smoother playback", "Takes longer to start, fewer pauses"),
+}
+
+/** App options from Settings (playback, channels, guide, appearance). */
+data class AppPrefs(
+    /** Highest resolution Auto may pick; 0 = no limit. */
+    val maxQuality: Int = 0,
+    val buffer: BufferMode = BufferMode.Balanced,
+    val subtitlesByDefault: Boolean = false,
+    /** AspectMode name. */
+    val defaultAspect: String = "Fit",
+    val autoPip: Boolean = true,
+    val resumeLastChannel: Boolean = false,
+    val lookUpResolutions: Boolean = true,
+    val sortAlphabetically: Boolean = false,
+    val guideRefreshHours: Int = 4,
+    val dynamicColor: Boolean = false,
+    val pureBlack: Boolean = false,
+)
+
 /** Settings and the user's library (favorites, recents, stream health) in DataStore. */
 class Prefs(private val context: Context) {
     private object K {
@@ -49,6 +73,17 @@ class Prefs(private val context: Context) {
         val health = stringPreferencesKey("health2")
         val last = stringPreferencesKey("last_channel")
         val hideOffline = booleanPreferencesKey("hide_offline")
+        val maxQuality = intPreferencesKey("max_quality")
+        val buffer = stringPreferencesKey("buffer")
+        val subsDefault = booleanPreferencesKey("subs_default")
+        val aspect = stringPreferencesKey("default_aspect")
+        val autoPip = booleanPreferencesKey("auto_pip")
+        val resumeLast = booleanPreferencesKey("resume_last")
+        val lookUp = booleanPreferencesKey("look_up_resolutions")
+        val sortAz = booleanPreferencesKey("sort_az")
+        val guideHours = intPreferencesKey("guide_refresh_hours")
+        val dynamic = booleanPreferencesKey("dynamic_color")
+        val black = booleanPreferencesKey("pure_black")
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -72,6 +107,47 @@ class Prefs(private val context: Context) {
             lastChannel = p[K.last],
             hideOffline = p[K.hideOffline] ?: false,
         )
+    }
+
+    val app: Flow<AppPrefs> = context.dataStore.data.map { p ->
+        val d = AppPrefs()
+        AppPrefs(
+            maxQuality = p[K.maxQuality] ?: d.maxQuality,
+            buffer = p[K.buffer]?.let { b -> BufferMode.entries.firstOrNull { it.name == b } } ?: d.buffer,
+            subtitlesByDefault = p[K.subsDefault] ?: d.subtitlesByDefault,
+            defaultAspect = p[K.aspect] ?: d.defaultAspect,
+            autoPip = p[K.autoPip] ?: d.autoPip,
+            resumeLastChannel = p[K.resumeLast] ?: d.resumeLastChannel,
+            lookUpResolutions = p[K.lookUp] ?: d.lookUpResolutions,
+            sortAlphabetically = p[K.sortAz] ?: d.sortAlphabetically,
+            guideRefreshHours = p[K.guideHours] ?: d.guideRefreshHours,
+            dynamicColor = p[K.dynamic] ?: d.dynamicColor,
+            pureBlack = p[K.black] ?: d.pureBlack,
+        )
+    }
+
+    suspend fun saveApp(a: AppPrefs) = context.dataStore.edit {
+        it[K.maxQuality] = a.maxQuality
+        it[K.buffer] = a.buffer.name
+        it[K.subsDefault] = a.subtitlesByDefault
+        it[K.aspect] = a.defaultAspect
+        it[K.autoPip] = a.autoPip
+        it[K.resumeLast] = a.resumeLastChannel
+        it[K.lookUp] = a.lookUpResolutions
+        it[K.sortAz] = a.sortAlphabetically
+        it[K.guideHours] = a.guideRefreshHours
+        it[K.dynamic] = a.dynamicColor
+        it[K.black] = a.pureBlack
+    }
+
+    suspend fun clearHistory() = context.dataStore.edit { it.remove(K.recent); it.remove(K.last) }
+    suspend fun clearFavorites() = context.dataStore.edit { it.remove(K.favorites) }
+    suspend fun clearOfflineMarks() = context.dataStore.edit { it.remove(K.health); it.remove(K.oldHealth) }
+
+    /** Restores every setting to its default; favorites and history are kept. */
+    suspend fun resetSettings() = context.dataStore.edit { p ->
+        listOf(K.playlists, K.epgCodes, K.customEpg, K.epgEnabled, K.hideOffline, K.maxQuality, K.buffer, K.subsDefault, K.aspect,
+            K.autoPip, K.resumeLast, K.lookUp, K.sortAz, K.guideHours, K.dynamic, K.black).forEach { p.remove(it) }
     }
 
     suspend fun saveSettings(s: UserSettings) = context.dataStore.edit {

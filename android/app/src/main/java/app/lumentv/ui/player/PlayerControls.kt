@@ -176,7 +176,8 @@ fun PlayerSheetHost(sheet: PlayerSheet?, controller: PlayerController, playback:
                             },
                         )
                     } else {
-                        SheetTitle("Quality", "Auto adjusts to your connection")
+                        androidx.compose.runtime.LaunchedEffect(Unit) { controller.probeQualities() }
+                        SheetTitle("Quality", if (playback.probingQualities) "Looking up resolutions…" else "Auto adjusts to your connection")
                         Choice("Auto", now?.let { "Currently $it" }, selected = playback.autoQuality) { controller.selectQuality(null); onSheet(null) }
                         Options(playback.video, selected = { !playback.autoQuality && it.selected }) { controller.selectQuality(it.id); onSheet(null) }
                     }

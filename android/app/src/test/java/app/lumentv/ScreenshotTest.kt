@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
@@ -64,6 +65,12 @@ class ScreenshotTest {
         rule.onAllNodesWithText("Settings").onFirst().performClick()
         rule.mainClock.advanceTimeBy(1_000)
         shot("4-settings")
+        rule.onAllNodesWithText("TV GUIDE").onFirst().performScrollTo()
+        rule.mainClock.advanceTimeBy(500)
+        shot("4b-settings-guide")
+        rule.onAllNodesWithText("Reset all settings").onFirst().performScrollTo()
+        rule.mainClock.advanceTimeBy(500)
+        shot("4c-settings-data")
 
         // Open a channel that has guide data.
         rule.onAllNodesWithText("Channels").onFirst().performClick()
@@ -109,5 +116,26 @@ class ScreenshotTest {
         rule.activity.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.mainClock.advanceTimeBy(1_000)
         shot("6-favorites-miniplayer")
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun landscapeBrowse() {
+        waitForData()
+        val vm = rule.activity.vm
+        val ch = vm.channels.value.first { !vm.epg.value[it.epgKey].isNullOrEmpty() && it.name.contains("News") }
+        rule.activity.runOnUiThread { vm.play(ch) }
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.waitUntil(15_000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            rule.onAllNodesWithText(ch.name).fetchSemanticsNodes().isNotEmpty()
+        }
+        shot("10-landscape-home")
+        rule.onAllNodesWithText(ch.name).onFirst().performClick() // mini player -> fullscreen player
+        rule.mainClock.advanceTimeBy(1_500)
+        shot("11-fullscreen")
+        rule.activity.runOnUiThread { vm.browsing.value = true }
+        rule.mainClock.advanceTimeBy(1_500)
+        shot("12-fullscreen-browse")
     }
 }

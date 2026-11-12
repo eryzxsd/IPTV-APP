@@ -67,6 +67,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import kotlin.math.abs
+import androidx.compose.material.icons.automirrored.rounded.List
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -212,7 +217,14 @@ private fun BoxScope.VideoBox(
             controls = false
         }
     }
-    val show = !inPip && (controls || !playback.isPlaying)
+    val browsing by vm.browsing.collectAsStateWithLifecycle()
+    val panelOpen = browsing && fullscreen && !inPip
+    LaunchedEffect(fullscreen) { if (!fullscreen) vm.browsing.value = false }
+    BackHandler(enabled = panelOpen) { vm.browsing.value = false }
+    val show = !inPip && !panelOpen && (controls || !playback.isPlaying)
+    val density = LocalDensity.current
+    val swipe = with(density) { 90.dp.toPx() }
+    val edge = with(density) { 48.dp.toPx() }
 
     AndroidView(
         factory = { ctx ->
@@ -245,6 +257,23 @@ private fun BoxScope.VideoBox(
         },
         modifier = Modifier
             .fillMaxSize()
+            // Fullscreen gestures: swipe up/down to change channel, swipe in from the left edge to browse.
+            .pointerInput(fullscreen, inPip) {
+                if (!fullscreen || inPip) return@pointerInput
+                var startX = 0f
+                var dx = 0f
+                var dy = 0f
+                detectDragGestures(
+                    onDragStart = { startX = it.x; dx = 0f; dy = 0f },
+                    onDrag = { change, amount -> change.consume(); dx += amount.x; dy += amount.y },
+                    onDragEnd = {
+                        when {
+                            abs(dy) > swipe && abs(dy) > abs(dx) -> vm.zap(if (dy < 0) 1 else -1)
+                            startX < edge && dx > swipe -> vm.browsing.value = true
+                        }
+                    },
+                )
+            }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                 controls = !controls
                 poke++
@@ -288,6 +317,9 @@ private fun BoxScope.VideoBox(
                     }
                 }
                 if (fullscreen) {
+                    IconButton(onClick = { vm.browsing.value = true }) {
+                        Icon(Icons.AutoMirrored.Rounded.List, "Browse channels", tint = Color.White)
+                    }
                     IconButton(onClick = { vm.toggleFavorite(channel) }) {
                         Icon(if (favorite) Icons.Rounded.Star else Icons.Rounded.StarOutline, "Favorite", tint = if (favorite) Color(0xFFFFC53D) else Color.White)
                     }
@@ -334,6 +366,7 @@ private fun BoxScope.VideoBox(
             }
         }
     }
+    if (fullscreen && !inPip) ChannelPanel(vm, panelOpen, onClose = { vm.browsing.value = false })
     PlayerSheetHost(sheet, vm.player, playback, onSheet = { sheet = it; poke++ })
 }
 

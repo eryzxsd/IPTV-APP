@@ -59,9 +59,26 @@ private val typography = base.copy(
 val Eyebrow = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
 
 @Composable
-fun LumenTheme(content: @Composable () -> Unit) {
+fun LumenTheme(dynamicColor: Boolean = false, pureBlack: Boolean = false, content: @Composable () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var scheme = if (dynamicColor && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+        androidx.compose.material3.dynamicDarkColorScheme(context)
+    } else {
+        colors
+    }
+    if (pureBlack) {
+        scheme = scheme.copy(
+            background = Color.Black,
+            surface = Color.Black,
+            surfaceContainerLowest = Color.Black,
+            surfaceContainerLow = Color(0xFF080808),
+            surfaceContainer = Color(0xFF101010),
+            surfaceContainerHigh = Color(0xFF181818),
+            surfaceContainerHighest = Color(0xFF222222),
+        )
+    }
     MaterialTheme(
-        colorScheme = colors,
+        colorScheme = scheme,
         typography = typography,
         shapes = Shapes(
             small = RoundedCornerShape(10.dp),

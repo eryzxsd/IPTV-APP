@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
 import app.lumentv.LumenApp
+import app.lumentv.data.AppPrefs
 import app.lumentv.data.Channel
 import app.lumentv.data.EpgData
 import app.lumentv.data.Library
@@ -27,6 +28,8 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 sealed interface Filter {
     data object All : Filter
@@ -55,6 +58,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val epgState: StateFlow<LoadState> = repo.epgState
 
     val query = MutableStateFlow("")
+    /** Fullscreen channel browser open. */
+    val browsing = MutableStateFlow(false)
     val filter = MutableStateFlow<Filter>(Filter.All)
 
     /** Ticks every 30 s so "now playing" and progress bars stay current. */
@@ -65,7 +70,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, System.currentTimeMillis())
 
-    val player = PlayerController(app, lumen.http, viewModelScope) { ch, ok ->
+    /** Read once up front: the player's buffer size is fixed when it's created. */
+    private val initialApp: AppPrefs = runBlocking { withTimeoutOrNull(1_500) { prefs.app.first() } } ?: AppPrefs()
+    val appPrefs: StateFlow<AppPrefs> = prefs.app.stateIn(viewModelScope, SharingStarted.Eagerly, initialApp)
+
+    val player = PlayerController(app, lumen.http, viewModelScope, initialApp.buffer) { ch, ok ->
         viewModelScope.launch { prefs.setHealth(ch.id, ok) }
     }
 
@@ -78,7 +87,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         list.filter { it.country.isNotEmpty() }.groupingBy { it.country }.eachCount().toList().sortedByDescending { it.second }
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val filtered: StateFlow<List<Channel>> = combine(channels, filter, query, library, epg) { all, f, q, lib, epg ->
+    val filtered: StateFlow<List<Channel>> = combine(channels, filter, query, library, combine(epg, appPrefs, ::Pair)) { all, f, q, lib, (epg, app) ->
         val byId = if (f is Filter.Favorites || f is Filter.Recent) all.associateBy { it.id } else emptyMap()
         var list = when (f) {
             Filter.All -> all
@@ -88,6 +97,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             is Filter.Country -> all.filter { it.country == f.code }
         }
         if (lib.hideOffline) list = list.filter { !lib.isOffline(it.id) }
+        // Favorites and Recent keep their own order.
+        if (app.sortAlphabetically && f !is Filter.Favorites && f !is Filter.Recent) {
+            list = list.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        }
         val needle = q.trim().lowercase()
         if (needle.isNotEmpty()) {
             val now = System.currentTimeMillis()
@@ -106,6 +119,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var loadedEpg: Pair<List<String>, Int>? = null
 
     init {
+        viewModelScope.launch { appPrefs.collect(player::applyPrefs) }
         viewModelScope.launch {
             settings.map { it.playlists }.distinctUntilChanged().collect { loadChannels(it, force = false) }
         }
@@ -136,7 +150,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadEpg(force: Boolean) = viewModelScope.launch {
         val s = settings.value
         val urls = if (s.epgEnabled) s.epgUrls else emptyList()
-        _epg.value = runCatching { repo.loadEpg(channels.value, urls, force) }.getOrDefault(emptyMap())
+        _epg.value = runCatching { repo.loadEpg(channels.value, urls, force, appPrefs.value.guideRefreshHours) }.getOrDefault(emptyMap())
     }
 
     private var restored = false
@@ -144,7 +158,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (restored) return
         restored = true
         val last = prefs.library.first().lastChannel ?: return
-        lastChannel.value = list.firstOrNull { it.id == last }
+        val ch = list.firstOrNull { it.id == last } ?: return
+        lastChannel.value = ch
+        // Settings > Resume last channel: start playing it right away.
+        if (appPrefs.value.resumeLastChannel && player.state.value.channel == null) play(ch)
     }
 
     fun reloadChannels() = viewModelScope.launch { loadChannels(settings.value.playlists, force = true) }
@@ -168,6 +185,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleFavorite(c: Channel) = viewModelScope.launch { prefs.toggleFavorite(c.id) }
     fun setHideOffline(v: Boolean) = viewModelScope.launch { prefs.setHideOffline(v) }
     fun saveSettings(s: UserSettings) = viewModelScope.launch { prefs.saveSettings(s) }
+    fun saveApp(a: AppPrefs) = viewModelScope.launch { prefs.saveApp(a) }
+    fun clearHistory() = viewModelScope.launch { prefs.clearHistory(); lastChannel.value = player.state.value.channel }
+    fun clearFavorites() = viewModelScope.launch { prefs.clearFavorites() }
+    fun clearOfflineMarks() = viewModelScope.launch { prefs.clearOfflineMarks() }
+    fun resetSettings() = viewModelScope.launch { prefs.resetSettings() }
 
     fun clearCache() = viewModelScope.launch(Dispatchers.IO) {
         repo.clearCache()
