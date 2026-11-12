@@ -157,4 +157,25 @@ class ScreenshotTest {
         playNewsChannel() // tablets/TV keep the Home layout in landscape
         shot("13b-tablet-home")
     }
+
+    @Test fun guideFailuresAndUnsavedBar() {
+        waitForData()
+        val vm = rule.activity.vm
+        // A guide file that doesn't exist, so it fails and shows the Retry card.
+        val bad = "https://epgshare01.online/epgshare01/epg_ripper_DOES_NOT_EXIST.xml.gz"
+        rule.activity.runOnUiThread { vm.saveSettings(vm.settings.value.copy(customEpgUrls = listOf(bad))) }
+        rule.waitUntil(240_000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            vm.epgFailures.value.isNotEmpty() && vm.epgState.value !is app.lumentv.data.LoadState.Loading
+        }
+        rule.onAllNodesWithText("Guide").onFirst().performClick()
+        rule.mainClock.advanceTimeBy(1_000)
+        shot("14-guide-failure")
+        rule.onAllNodesWithText("Settings").onFirst().performClick()
+        rule.mainClock.advanceTimeBy(1_000)
+        // Toggle a guide region: the unsaved-changes bar must show without scrolling.
+        rule.onAllNodesWithText("Japan 1").onFirst().performScrollTo().performClick()
+        rule.mainClock.advanceTimeBy(1_000)
+        shot("15-settings-unsaved-and-failure")
+    }
 }

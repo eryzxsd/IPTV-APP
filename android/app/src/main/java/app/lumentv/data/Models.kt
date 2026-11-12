@@ -62,3 +62,7 @@ sealed interface LoadState {
     data class Done(val message: String? = null) : LoadState
     data class Failed(val message: String) : LoadState
 }
+
+/** A guide file that couldn't be downloaded. */
+@Serializable
+data class EpgFailure(val url: String, val name: String, val reason: String)

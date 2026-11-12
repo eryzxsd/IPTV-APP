@@ -31,6 +31,9 @@ class Repository(context: Context, private val http: OkHttpClient) {
 
     private val _epgState = MutableStateFlow<LoadState>(LoadState.Idle)
     val epgState: StateFlow<LoadState> = _epgState
+    private val _epgFailures = MutableStateFlow<List<EpgFailure>>(emptyList())
+    /** Guide files that couldn't be downloaded (shown with a Retry button). */
+    val epgFailures: StateFlow<List<EpgFailure>> = _epgFailures
 
     @Serializable
     private class Cached<T>(val key: String, val time: Long, val data: T)
@@ -53,56 +56,131 @@ class Repository(context: Context, private val http: OkHttpClient) {
         all
     }
 
+    /** Last parsed result per guide file (this session), so a retry only re-downloads failed files. */
+    private val fileResults = java.util.concurrent.ConcurrentHashMap<String, XmltvParser.FileResult>()
+    private var resultsKey: String? = null
+
+    @Serializable
+    private class EpgCache(val data: Map<String, List<Programme>>, val failures: List<EpgFailure>)
+
+    private fun epgKey(channels: List<Channel>, urls: List<String>) = "v2|" + urls.joinToString("|") + "|" + channels.size
+
     suspend fun loadEpg(channels: List<Channel>, urls: List<String>, force: Boolean, ttlHours: Int = 4): EpgData = withContext(Dispatchers.IO) {
         if (urls.isEmpty() || channels.isEmpty()) {
             _epgState.value = LoadState.Idle
+            _epgFailures.value = emptyList()
             return@withContext emptyMap()
         }
-        val key = "v1|" + urls.joinToString("|") + "|" + channels.size
-        if (!force) readCache<Map<String, List<Programme>>>("epg.json", key, ttlHours * HOUR)?.let {
+        val key = epgKey(channels, urls)
+        if (!force) readCache<EpgCache>("epg.json", key, ttlHours * HOUR)?.let {
+            _epgFailures.value = it.failures
             _epgState.value = LoadState.Done()
-            return@withContext it
+            return@withContext it.data
         }
+        fileResults.clear()
+        resultsKey = key
+        download(channels, urls, urls, base = null, key = key, label = "Guide")
+    }
 
+    /** Downloads only the guide files that failed last time and merges them in. */
+    suspend fun retryFailedEpg(channels: List<Channel>, urls: List<String>, current: EpgData): EpgData = withContext(Dispatchers.IO) {
+        val failed = _epgFailures.value.map { it.url }.filter { it in urls }
+        if (failed.isEmpty() || channels.isEmpty()) return@withContext current
+        val key = epgKey(channels, urls)
+        // Same session: proper merge from parsed results. After a restart: fill in what's missing.
+        val haveAll = resultsKey == key && urls.filter { it !in failed }.all { fileResults.containsKey(it) }
+        if (!haveAll) {
+            fileResults.clear()
+            resultsKey = key
+        }
+        download(channels, urls, failed, base = if (haveAll) null else current, key = key, label = "Retrying guide")
+    }
+
+    private suspend fun download(
+        channels: List<Channel>,
+        urls: List<String>,
+        toFetch: List<String>,
+        base: EpgData?,
+        key: String,
+        label: String,
+    ): EpgData = coroutineScope {
         val now = System.currentTimeMillis()
         val parser = XmltvParser(channels, { Xml.newPullParser() }, now - 3 * HOUR, now + 48 * HOUR)
         val bytes = AtomicLong()
         val done = AtomicLong()
-        val errors = mutableListOf<String>()
+        val failures = java.util.Collections.synchronizedList(ArrayList<EpgFailure>())
         fun report() {
             _epgState.value = LoadState.Loading(
-                "Guide ${done.get()}/${urls.size} · ${"%.1f".format(bytes.get() / 1048576f)} MB",
-                done.get().toFloat() / urls.size,
+                "$label ${done.get()}/${toFetch.size} · ${"%.1f".format(bytes.get() / 1048576f)} MB",
+                done.get().toFloat() / toFetch.size,
             )
         }
         report()
         val gate = Semaphore(3)
-        val results = coroutineScope {
-            urls.map { url ->
-                async {
-                    gate.withPermit {
-                        try {
-                            get(url).use { raw ->
-                                val counted = CountingStream(raw) { n -> bytes.addAndGet(n); }
-                                parser.parse(maybeGunzip(counted))
-                            }
-                        } catch (e: Exception) {
-                            synchronized(errors) { errors += "${url.substringAfterLast('/')}: ${e.message}" }
-                            null
-                        } finally {
-                            done.incrementAndGet()
-                            report()
-                        }
+        toFetch.map { url ->
+            async {
+                gate.withPermit {
+                    try {
+                        fileResults[url] = fetchGuideWithRetry(url, parser, bytes)
+                    } catch (e: Exception) {
+                        failures += EpgFailure(url, guideName(url), friendlyError(e))
+                    } finally {
+                        done.incrementAndGet()
+                        report()
                     }
                 }
-            }.awaitAll()
-        }
-        val data = XmltvParser.merge(results.filterNotNull())
-        _epgState.value = if (data.isEmpty() && errors.isNotEmpty()) LoadState.Failed(errors.joinToString("\n"))
-        else LoadState.Done(errors.takeIf { it.isNotEmpty() }?.joinToString("\n"))
-        if (data.isNotEmpty()) writeCache("epg.json", key, data)
+            }
+        }.awaitAll()
+
+        val fresh = urls.mapNotNull { fileResults[it] }
+        val data = if (base == null) XmltvParser.merge(fresh) else XmltvParser.fillMissing(base, toFetch.mapNotNull { fileResults[it] })
+        val failed = failures.sortedBy { urls.indexOf(it.url) }
+        _epgFailures.value = failed
+        _epgState.value = if (data.isEmpty() && failed.isNotEmpty()) LoadState.Failed(failed.joinToString("\n") { "${it.name}: ${it.reason}" })
+        else LoadState.Done()
+        if (data.isNotEmpty()) writeCache("epg.json", key, EpgCache(data, failed))
         data
     }
+
+    /**
+     * Downloads and parses one guide file. Network problems, timeouts and server errors are
+     * retried (big files like "Everything" are the most likely to be interrupted); a missing
+     * file (404) isn't.
+     */
+    private suspend fun fetchGuideWithRetry(url: String, parser: XmltvParser, bytes: AtomicLong): XmltvParser.FileResult {
+        var attempt = 0
+        while (true) {
+            var counted = 0L
+            try {
+                return get(url).use { raw ->
+                    parser.parse(maybeGunzip(CountingStream(raw) { n -> counted += n; bytes.addAndGet(n) }))
+                }
+            } catch (e: Exception) {
+                bytes.addAndGet(-counted) // the retry downloads it again
+                attempt++
+                if (attempt >= GUIDE_ATTEMPTS || !isRetryable(e)) throw e
+                kotlinx.coroutines.delay(if (attempt == 1) 2_000 else 5_000)
+            }
+        }
+    }
+
+    private fun isRetryable(e: Exception): Boolean {
+        val code = (e as? HttpException)?.code ?: return true // network, timeout, truncated download, bad data
+        return code == 408 || code == 429 || code >= 500
+    }
+
+    private fun friendlyError(e: Exception): String = when {
+        e is HttpException && e.code == 404 -> "File not found (404)"
+        e is HttpException -> "Server error (HTTP ${e.code})"
+        e is java.net.SocketTimeoutException -> "The server took too long to respond"
+        e is java.net.UnknownHostException -> "No internet connection"
+        e is java.io.EOFException || e.message?.contains("unexpected end", true) == true -> "The download was cut off"
+        else -> e.message?.take(80) ?: "Download failed"
+    }
+
+    private fun guideName(url: String) = Sources.EPG_SOURCES.firstOrNull { it.url == url }?.label ?: url.substringAfterLast('/')
+
+    class HttpException(val code: Int) : IOException("HTTP $code")
 
     fun clearCache() {
         cacheDir.listFiles()?.forEach { it.delete() }
@@ -112,7 +190,7 @@ class Repository(context: Context, private val http: OkHttpClient) {
         val res = http.newCall(Request.Builder().url(url).build()).execute()
         if (!res.isSuccessful) {
             res.close()
-            throw IOException("HTTP ${res.code}")
+            throw HttpException(res.code)
         }
         return res.body.byteStream()
     }
@@ -149,6 +227,7 @@ class Repository(context: Context, private val http: OkHttpClient) {
     companion object {
         private const val HOUR = 3_600_000L
         private const val PLAYLIST_TTL = 6 * HOUR
+        private const val GUIDE_ATTEMPTS = 3
         const val USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
     }

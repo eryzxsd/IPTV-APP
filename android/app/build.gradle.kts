@@ -114,6 +114,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("net.sf.kxml:kxml2:2.3.0")
     testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("com.squareup.okhttp3:mockwebserver3:5.5.1")
     testImplementation("io.github.takahirom.roborazzi:roborazzi:1.76.0")
     testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.76.0")
     testImplementation("androidx.compose.ui:ui-test-junit4")

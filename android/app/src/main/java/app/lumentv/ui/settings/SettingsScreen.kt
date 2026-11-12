@@ -1,6 +1,11 @@
 package app.lumentv.ui.settings
 
 import android.os.Build
+import app.lumentv.ui.components.GuideFailuresCard
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -88,6 +93,7 @@ fun SettingsScreen(vm: MainViewModel, contentPadding: PaddingValues) {
     val app by vm.appPrefs.collectAsStateWithLifecycle()
     val lib by vm.library.collectAsStateWithLifecycle()
     val epgState by vm.epgState.collectAsStateWithLifecycle()
+    val failures by vm.epgFailures.collectAsStateWithLifecycle()
     var draft by remember { mutableStateOf(saved) }
     LaunchedEffect(saved) { draft = saved }
     var customPlaylist by remember(saved) { mutableStateOf(saved.playlists.filter { u -> Sources.PLAYLISTS.none { it.url == u } }.joinToString("\n")) }
@@ -103,8 +109,9 @@ fun SettingsScreen(vm: MainViewModel, contentPadding: PaddingValues) {
     )
     val dirty = pending != saved
 
+    Column(Modifier.fillMaxSize()) {
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding).padding(horizontal = 16.dp, vertical = 12.dp),
+        Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(contentPadding).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Settings", style = MaterialTheme.typography.headlineSmall)
@@ -166,7 +173,13 @@ fun SettingsScreen(vm: MainViewModel, contentPadding: PaddingValues) {
                 options = listOf(2 to "2 hours", 4 to "4 hours", 12 to "12 hours", 24 to "24 hours"),
                 selected = app.guideRefreshHours,
             ) { set(app.copy(guideRefreshHours = it)) }
-            (epgState as? LoadState.Done)?.message?.let { Text(it, fontSize = 12.sp, color = Brand.Warn, modifier = Modifier.padding(horizontal = 16.dp)) }
+            (epgState as? LoadState.Loading)?.let { l ->
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    Text(l.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LinearProgressIndicator(progress = { l.progress ?: 0f }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                }
+            }
+            GuideFailuresCard(failures, epgState, onRetry = { vm.retryFailedEpg() }, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
             listOf(false to "COUNTRIES", true to "STREAMING SERVICES & NETWORKS").forEach { (service, label) ->
                 Text(label, style = Eyebrow, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 6.dp))
                 FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -224,20 +237,6 @@ fun SettingsScreen(vm: MainViewModel, contentPadding: PaddingValues) {
             )
         }
 
-        if (dirty) {
-            Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.primaryContainer) {
-                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Playlist or guide changes not saved", modifier = Modifier.weight(1f).padding(start = 4.dp), fontWeight = FontWeight.Medium)
-                    TextButton(onClick = {
-                        draft = saved
-                        customPlaylist = saved.playlists.filter { u -> Sources.PLAYLISTS.none { it.url == u } }.joinToString("\n")
-                        customEpg = saved.customEpgUrls.joinToString("\n")
-                    }) { Text("Discard") }
-                    Button(onClick = { vm.saveSettings(pending) }) { Text("Save") }
-                }
-            }
-        }
-
         // ------------------------------------------------------------ Appearance
         Section("Appearance") {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -282,6 +281,24 @@ fun SettingsScreen(vm: MainViewModel, contentPadding: PaddingValues) {
             }
         }
         Spacer(Modifier.height(8.dp))
+    }
+    // Always visible (not at the bottom of the scroll): unsaved playlist / guide-source changes.
+    AnimatedVisibility(dirty, enter = expandVertically(), exit = shrinkVertically()) {
+        Surface(color = MaterialTheme.colorScheme.primaryContainer, tonalElevation = 6.dp, shadowElevation = 8.dp) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Unsaved changes", fontWeight = FontWeight.SemiBold)
+                    Text("Playlist or TV guide sources", style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = {
+                    draft = saved
+                    customPlaylist = saved.playlists.filter { u -> Sources.PLAYLISTS.none { it.url == u } }.joinToString("\n")
+                    customEpg = saved.customEpgUrls.joinToString("\n")
+                }) { Text("Discard") }
+                Button(onClick = { vm.saveSettings(pending) }) { Text("Save") }
+            }
+        }
+    }
     }
 
     confirm?.let { c ->

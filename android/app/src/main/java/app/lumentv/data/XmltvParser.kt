@@ -167,6 +167,12 @@ class XmltvParser(
             return cal.timeInMillis - offset
         }
 
+        /** Adds guide data from [results] for channels that [base] has nothing for (used after a restart). */
+        fun fillMissing(base: EpgData, results: List<FileResult>): EpgData {
+            val extra = merge(results)
+            return base + extra.filterKeys { base[it].isNullOrEmpty() }
+        }
+
         /** Combines per-file results: for every key, the highest score wins (earlier files win ties). */
         fun merge(results: List<FileResult>): EpgData {
             val chosen = HashMap<String, Pair<Int, Int>>() // key -> (score, file index)

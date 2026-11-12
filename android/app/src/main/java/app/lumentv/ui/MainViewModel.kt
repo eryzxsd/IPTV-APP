@@ -58,6 +58,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _epg = MutableStateFlow<EpgData>(emptyMap())
     val epg: StateFlow<EpgData> = _epg
     val epgState: StateFlow<LoadState> = repo.epgState
+    val epgFailures: StateFlow<List<app.lumentv.data.EpgFailure>> = repo.epgFailures
 
     val query = MutableStateFlow("")
     /** Fullscreen channel browser open. */
@@ -193,6 +194,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun reloadChannels() = viewModelScope.launch { loadChannels(settings.value.playlists, force = true) }
     fun reloadEpg() = loadEpg(force = true)
+
+    /** Re-downloads only the guide files that failed. */
+    fun retryFailedEpg() = viewModelScope.launch {
+        if (epgState.value is LoadState.Loading) return@launch
+        val s = settings.value
+        val urls = if (s.epgEnabled) s.epgUrls else emptyList()
+        _epg.value = runCatching { repo.retryFailedEpg(channels.value, urls, _epg.value) }.getOrDefault(_epg.value)
+    }
 
     fun play(c: Channel) {
         player.play(c)

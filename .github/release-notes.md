@@ -14,10 +14,12 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
   On Android TV, sideload it with a file manager or `adb install`.
 - **Windows**: the app isn't code-signed, so SmartScreen may warn you. Click **More info → Run anyway**.
 
-## What's new in 1.4.1
+## What's new in 1.4.2
 
-- **Play after pause takes you back to live.** Pausing a live channel used to resume from where you paused, leaving
-  you behind the broadcast. Now pressing play jumps to the live broadcast. A very short pause (a few seconds)
-  just continues. If you'd rather pick up where you paused, turn off **Settings → Playback → Jump to live when resuming**.
-- The **LIVE / GO LIVE** badge is more accurate: streams that normally play a little behind the edge
-  no longer show "GO LIVE" while you're watching live.
+- **Retry for TV guide downloads:**
+  - Guide files that hit a network error, a timeout or a server error (5xx) are retried automatically, up to 3 times.
+    This mostly matters for the large "Everything" file.
+  - If a file still fails, the Guide tab and Settings list it with the reason and a **Retry** button.
+  - Retry downloads only the failed files; the guide data you already have stays.
+- **"Unsaved changes" is always visible:** the Save / Discard bar for playlist and guide-source changes is pinned
+  to the bottom of Settings, so you don't have to scroll to find it.

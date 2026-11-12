@@ -53,6 +53,7 @@ import app.lumentv.data.Programme
 import app.lumentv.ui.MainViewModel
 import app.lumentv.ui.components.ChannelLogo
 import app.lumentv.ui.components.EmptyState
+import app.lumentv.ui.components.GuideFailuresCard
 import app.lumentv.ui.components.fmtTime
 import app.lumentv.ui.theme.Brand
 import kotlinx.coroutines.launch
@@ -68,6 +69,7 @@ fun GuideScreen(vm: MainViewModel, onPlay: (Channel) -> Unit, contentPadding: Pa
     val channels by vm.filtered.collectAsStateWithLifecycle()
     val epg by vm.epg.collectAsStateWithLifecycle()
     val epgState by vm.epgState.collectAsStateWithLifecycle()
+    val failures by vm.epgFailures.collectAsStateWithLifecycle()
     val clock by vm.clock.collectAsStateWithLifecycle()
     val playing by vm.player.state.collectAsStateWithLifecycle()
     var onlyWithGuide by rememberSaveable { mutableStateOf(true) }
@@ -111,6 +113,8 @@ fun GuideScreen(vm: MainViewModel, onPlay: (Channel) -> Unit, contentPadding: Pa
             FilterChip(selected = onlyWithGuide, onClick = { onlyWithGuide = !onlyWithGuide }, label = { Text("With guide") }, shape = RoundedCornerShape(50))
             IconButton(onClick = jumpToNow) { Icon(Icons.Rounded.MyLocation, "Jump to now") }
         }
+
+        GuideFailuresCard(failures, epgState, onRetry = { vm.retryFailedEpg() }, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
 
         if (epg.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
