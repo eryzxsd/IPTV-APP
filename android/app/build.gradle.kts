@@ -108,9 +108,6 @@ dependencies {
     implementation("androidx.media3:media3-session:1.11.1")
 
     // Android TV: View-based Leanback UI (no Compose on TVs, so it stays fast on low-end/32-bit boxes).
-    implementation("androidx.leanback:leanback:1.2.0")
-    implementation("androidx.fragment:fragment-ktx:1.9.1")
-    implementation("io.coil-kt.coil3:coil:3.6.3")
 
     implementation("com.squareup.okhttp3:okhttp:5.5.1")
     implementation("io.coil-kt.coil3:coil-compose:3.6.3")

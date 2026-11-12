@@ -38,14 +38,14 @@
             </intent-filter>
         </activity>
 
-        <!-- Android TV: separate View-based (Leanback) activity, so TVs never load the Compose UI. -->
+        <!-- Android TV: Compose + Material 3 interface made for the remote (ui/tv). -->
         <activity
             android:name=".tv.TvActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
             android:launchMode="singleTask"
             android:screenOrientation="landscape"
-            android:theme="@style/Theme.LumenTV.Tv">
+            android:theme="@style/Theme.LumenTV">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />

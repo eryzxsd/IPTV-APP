@@ -81,11 +81,10 @@ The Android app is fully native and doesn't use the web code:
   - **Home** holds the main player (auto-hiding controls, subtitles, audio, quality, fullscreen channel browser), what's on,
     and on-device recommendations (`data/Recommender.kt`).
   - **Channels** has category and country sheets, **Guide** is a TV guide grid, and **Settings** covers every option.
-- **UI (Android TV)**: a separate, View-based Leanback interface (`tv/`) that is fast on low-end and 32-bit TVs.
-  It opens from the TV launcher and never loads Compose.
-  - **Home**: rows of recommendations and what's on now, over the playing channel.
+- **UI (Android TV)**: its own Compose + Material 3 screens made for the remote (`ui/tv/`), opened from the TV launcher.
+  - **Home**: what's playing and rows of recommendations, over the playing channel.
   - **Player**: OK shows the info bar and buttons, Up/Down change channel, and Left/Guide/Menu opens the channel list.
-  - **TV guide**, **Search** (with voice) and **Settings** are built with Leanback guided steps.
+  - **TV guide**, **Search** (with voice) and **Settings** (the same options as the phone app).
 - **Playback**: Media3/ExoPlayer, which plays HLS directly. No CORS proxy is needed, and it sends the user agent and
   referrer some iptv-org streams require.
 - **Data**: the same M3U parsing and epgshare01 matching as the web app (`data/M3uParser.kt`, `data/XmltvParser.kt`),
@@ -101,7 +100,7 @@ server/proxy.mjs        CORS proxy (shared by Vite dev server and production ser
 server/app.mjs          static server + proxy (shared by npm start and the desktop app)
 server/index.mjs        `npm start` entry point
 desktop/main.mjs        Electron main process (discontinued Windows/macOS/Linux app)
-android/                Android app (Kotlin, Compose, Material 3, Media3) with a Leanback UI for Android TV
+android/                Android / Android TV app (Kotlin, Compose, Material 3, Media3)
 .github/workflows/      release workflow (Android APK)
 src/lib/m3u.ts          M3U parser
 src/lib/epg.worker.ts   streaming XMLTV(.gz) parser in a Web Worker

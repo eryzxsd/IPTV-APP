@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -357,12 +358,13 @@ private fun Section(title: String, subtitle: String? = null, content: @Composabl
 @Composable
 private fun Toggle(icon: ImageVector, title: String, subtitle: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
     ListItem(
-        modifier = Modifier.clickable { onChange(!checked) },
+        // One focus stop per row (the switch itself isn't focusable), which suits TV remotes.
+        modifier = Modifier.toggleable(checked, role = Role.Switch, onValueChange = onChange),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = { Icon(icon, null) },
         headlineContent = { Text(title) },
         supportingContent = subtitle?.let { { Text(it) } },
-        trailingContent = { Switch(checked = checked, onCheckedChange = onChange) },
+        trailingContent = { Switch(checked = checked, onCheckedChange = null) },
     )
 }
 
