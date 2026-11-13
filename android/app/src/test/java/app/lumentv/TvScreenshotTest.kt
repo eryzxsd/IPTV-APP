@@ -113,5 +113,11 @@ class TvScreenshotTest {
         key(Key.DirectionCenter)
         rule.mainClock.advanceTimeBy(1_000)
         shot("tv-12-after-close")
+        key(Key.DirectionCenter) // play the first recommendation
+        rule.mainClock.advanceTimeBy(1_000)
+        shot("tv-13-playing-again")
+        key(Key.Back) // Back on the player closes it
+        rule.mainClock.advanceTimeBy(1_000)
+        shot("tv-14-after-back")
     }
 }

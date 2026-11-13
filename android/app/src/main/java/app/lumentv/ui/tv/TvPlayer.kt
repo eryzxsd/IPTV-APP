@@ -173,6 +173,7 @@ fun TvPlayer(vm: MainViewModel, onOpen: (TvScreen) -> Unit, onExit: () -> Unit) 
                         }
                     }
                     message -> when {
+                        k == Key.Back -> { vm.player.stop(); true }
                         k == Key.DirectionUp -> { vm.zap(-1); true }
                         k == Key.DirectionDown -> { vm.zap(1); true }
                         menu -> { panel = true; true }
@@ -185,7 +186,8 @@ fun TvPlayer(vm: MainViewModel, onOpen: (TvScreen) -> Unit, onExit: () -> Unit) 
                         k == Key.DirectionUp -> { vm.zap(-1); true }
                         k == Key.DirectionDown -> { vm.zap(1); true }
                         k == Key.DirectionLeft || menu -> { overlay = Overlay.None; panel = true; true }
-                        k == Key.Back && overlay == Overlay.Info -> { overlay = Overlay.None; true }
+                        // Back closes the player: Home goes back to how it looks when the app opens.
+                        k == Key.Back -> { vm.player.stop(); true }
                         else -> false
                     }
                 }

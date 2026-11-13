@@ -13,8 +13,10 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
 
 ## What's new in 1.9.2
 
-- **Android TV:** a **Close** button in the player (press OK, then go to the last button) stops the channel. You go back to Home as it looks when the app opens.
-  - Holding OK on the playing channel's card on Home also offers **Stop playing**.
+- **Android TV: closing the player.**
+  - Press **Back** on the remote while watching to stop the channel. You go back to Home as it looks when the app opens. If the channel list or the buttons are open, Back closes them first.
+  - The player also has a **Close** button: press OK, then go to the last button.
+  - Holding OK on the playing channel's card on Home offers **Stop playing**.
 - **Phones and tablets** (from 1.9.1):
   - The **✕** in the top-left of the player, or Back on Home, closes the player.
   - Home's search button opens a full search screen.
