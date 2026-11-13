@@ -1,5 +1,7 @@
 package app.lumentv.ui.player
 
+import app.lumentv.ui.home.browseItems
+import app.lumentv.ui.home.HomeHero
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -130,12 +132,14 @@ import java.util.Locale
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun HomeScreen(vm: MainViewModel, inPip: Boolean, onOpen: (Channel) -> Unit) {
+fun HomeScreen(vm: MainViewModel, inPip: Boolean, onOpen: (Channel) -> Unit, onBrowse: (String?) -> Unit = {}) {
     val playback by vm.player.state.collectAsStateWithLifecycle()
     val epg by vm.epg.collectAsStateWithLifecycle()
     val clock by vm.clock.collectAsStateWithLifecycle()
     val lib by vm.library.collectAsStateWithLifecycle()
     val rows by vm.homeRows.collectAsStateWithLifecycle()
+    val groups by vm.groups.collectAsStateWithLifecycle()
+    val categories = remember(groups) { groups.filter { it.first != "Other" }.sortedByDescending { it.second }.take(14) }
     val userFullscreen by vm.fullscreen.collectAsStateWithLifecycle()
     val channel = playback.channel
 
@@ -177,7 +181,7 @@ fun HomeScreen(vm: MainViewModel, inPip: Boolean, onOpen: (Channel) -> Unit) {
     BackHandler(enabled = fullscreen && !inPip) { toggleFullscreen() }
 
     if (channel == null) {
-        IdleHome(vm, rows, epg, clock, onOpen)
+        IdleHome(vm, rows, epg, clock, onOpen, categories, lib.favorites.size, onBrowse)
         return
     }
     val programmes = epg[channel.epgKey]
@@ -211,6 +215,7 @@ fun HomeScreen(vm: MainViewModel, inPip: Boolean, onOpen: (Channel) -> Unit) {
                     }
                 }
                 recommendationItems(rows, epg, clock, channel.id, onOpen)
+                browseItems(categories, lib.favorites.size, onBrowse)
             }
         } else {
             Column(Modifier.fillMaxSize()) {
@@ -224,6 +229,7 @@ fun HomeScreen(vm: MainViewModel, inPip: Boolean, onOpen: (Channel) -> Unit) {
                         }
                     }
                     recommendationItems(rows, epg, clock, channel.id, onOpen)
+                    browseItems(categories, lib.favorites.size, onBrowse)
                 }
             }
         }
@@ -252,21 +258,35 @@ private fun UpNext(programmes: List<Programme>?, now: Programme?, clock: Long, i
     }
 }
 
-/** Nothing playing: a featured pick and the recommendation rows. */
+/** Nothing playing: a banner of top picks, then the rows (recommendations first) and category tiles. */
 @Composable
-private fun IdleHome(vm: MainViewModel, rows: List<HomeRow>, epg: EpgData, clock: Long, onOpen: (Channel) -> Unit) {
+private fun IdleHome(
+    vm: MainViewModel,
+    rows: List<HomeRow>,
+    epg: EpgData,
+    clock: Long,
+    onOpen: (Channel) -> Unit,
+    categories: List<Pair<String, Int>>,
+    favorites: Int,
+    onBrowse: (String?) -> Unit,
+) {
     val state by vm.channelState.collectAsStateWithLifecycle()
-    val featured = remember(rows) { Recommender.featured(rows) }
+    val lib by vm.library.collectAsStateWithLifecycle()
+    val order = listOf("for-you", "continue", "on-now", "favorites", "because")
+    val sorted = remember(rows) { rows.sortedBy { r -> order.indexOf(r.id).let { if (it < 0) order.size else it } } }
+    // A few picks for the banner: top recommendations and something on air now.
+    val picks = remember(rows) {
+        val forYou = rows.firstOrNull { it.id == "for-you" }?.channels.orEmpty().take(3)
+        val onNow = rows.firstOrNull { it.id == "on-now" }?.channels.orEmpty().take(2)
+        (forYou + onNow).distinctBy { it.id }.ifEmpty { rows.firstOrNull()?.channels.orEmpty().take(5) }
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
-        item {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Text("Home", style = MaterialTheme.typography.headlineSmall)
-                Text("What do you want to watch?", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+        item(key = "hero") {
+            HomeHero(picks, epg, clock, lib.favorites, onPlay = onOpen, onFavorite = { vm.toggleFavorite(it) }, onSearch = { onBrowse(null) })
         }
         if (state is LoadState.Loading && rows.isEmpty()) item { LoadingBar(Modifier.padding(16.dp)) }
-        if (featured != null) item { FeaturedCard(featured, epg[featured.epgKey].nowAndNext(clock).first, clock) { onOpen(featured) } }
-        recommendationItems(rows, epg, clock, null, onOpen)
+        recommendationItems(sorted, epg, clock, null, onOpen)
+        browseItems(categories, favorites, onBrowse)
     }
 }
 
@@ -469,7 +489,8 @@ private fun BoxScope.VideoBox(
         )
     }
     if (fullscreen && !inPip) ChannelPanel(vm, panelOpen, onClose = { vm.browsing.value = false })
-    PlayerSheetHost(sheet, vm.player, playback, onSheet = { sheet = it; poke++ })
+    val previous by vm.previousChannel.collectAsStateWithLifecycle()
+    PlayerSheetHost(sheet, vm.player, playback, onSheet = { sheet = it; poke++ }, previous = previous, onPrevious = vm::playPrevious)
 }
 
 @Composable

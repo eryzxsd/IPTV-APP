@@ -39,6 +39,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import app.lumentv.ui.components.ChannelOptionsSheet
+import app.lumentv.ui.components.LocalChannelOptions
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
@@ -82,11 +88,27 @@ fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Un
     }
     BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
 
+    // Category tiles and "More … channels": show that list in Channels.
+    val browse: (String?) -> Unit = { g ->
+        vm.query.value = ""
+        vm.filter.value = when (g) {
+            null -> Filter.All
+            app.lumentv.ui.home.FAVORITES -> Filter.Favorites
+            else -> Filter.Group(g)
+        }
+        tab = Tab.Channels
+    }
+    // Long-press on any channel.
+    var options by remember { mutableStateOf<Channel?>(null) }
+    // A search isn't kept: coming back to the app starts without the old results.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { vm.query.value = "" }
+
     val config = LocalConfiguration.current
     val phoneLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE && config.smallestScreenWidthDp < 600
     val videoFullscreen = tab == Tab.Home && playing && (inPip || userFullscreen || phoneLandscape)
     val adaptive = NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(currentWindowAdaptiveInfo())
 
+    CompositionLocalProvider(LocalChannelOptions provides { c: Channel -> options = c }) {
     // Surface provides the theme's content colour to every screen.
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         NavigationSuiteScaffold(
@@ -98,11 +120,13 @@ fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Un
             layoutType = if (videoFullscreen) NavigationSuiteType.None else adaptive,
             containerColor = MaterialTheme.colorScheme.background,
         ) {
-            Column(Modifier.fillMaxSize().then(if (videoFullscreen) Modifier else Modifier.statusBarsPadding())) {
+            // Idle Home's banner runs under the status bar (it pads its own top bar).
+            val edgeToEdge = videoFullscreen || (tab == Tab.Home && !playing)
+            Column(Modifier.fillMaxSize().then(if (edgeToEdge) Modifier else Modifier.statusBarsPadding())) {
                 Box(Modifier.weight(1f)) {
                     val pad = PaddingValues(bottom = 12.dp)
                     when (tab) {
-                        Tab.Home -> HomeScreen(vm, inPip = inPip, onOpen = open)
+                        Tab.Home -> HomeScreen(vm, inPip = inPip, onOpen = open, onBrowse = browse)
                         Tab.Channels -> ChannelsScreen(vm, onOpenPlayer = open, contentPadding = pad)
                         Tab.Guide -> GuideScreen(vm, onPlay = open, contentPadding = pad)
                         Tab.Settings -> SettingsScreen(vm, contentPadding = pad)
@@ -111,6 +135,8 @@ fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Un
                 if (tab != Tab.Home) MiniPlayer(vm, onOpen = { tab = Tab.Home }, onResume = open)
             }
         }
+    }
+    options?.let { c -> ChannelOptionsSheet(vm, c, onPlay = open, onBrowse = browse, onDismiss = { options = null }) }
     }
 }
 

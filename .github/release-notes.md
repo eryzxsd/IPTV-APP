@@ -11,17 +11,11 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
 - **Android**: download the APK on your device and open it. Allow "Install unknown apps" for your browser or file manager when asked.
   On Android TV, sideload it with a file manager or `adb install`.
 
-## What's new in 1.8.0 (Android TV)
+## What's new in 1.9.0 (phones and tablets)
 
-- **New Home, in the style of streaming apps.**
-  - A large banner shows the channel you're on: what's airing, its description, how long is left and what's next. The playing channel shows as live video behind it.
-  - Rows of channels sit below the banner. **Recommended for you** comes first, so Home opens on recommendations instead of only your last channel.
-  - A slim menu on the left (press Left) opens Search, Home, TV guide, All channels and Settings.
-  - A new **Browse** row has tiles for All channels, Favorites and every category, each opening a grid of channels.
-- **Channel options:** hold OK (or press Menu) on any channel to watch it, add or remove it from favorites, or see more channels from its category.
-- **Number keys:** type a channel number to jump to it. The number and channel name show while you type. Channel numbers appear in the info bar and the channel list.
-- **Last channel:** the remote's Last/Back-channel button returns to the previous channel. It's also under More in the player.
-- **Channel list filter:** choose All channels, Favorites, Recently watched or any category from the top of the channel list. Channel up/down then follows that list. Browsing a category does the same.
-- **Pause:** the info bar stays on screen with a **PAUSED** label while paused.
-- **Search** starts empty each time and no longer comes back with old results when you return to the app.
-- **Exiting:** press Back twice on Home to exit, so a single press doesn't close the app by accident.
+- **New Home, like the TV app's.** When nothing is playing, Home opens with a full-width banner of top picks. Swipe through them, or let it move on by itself. Each pick shows what's on now, its progress, and **Watch** and **Favorite** buttons. Below it, **Recommended for you** comes first, then the other rows.
+- **Browse** tiles at the end of Home: All channels, Favorites and every category open straight into that list in Channels.
+- **Long-press any channel** (Home, Channels or the fullscreen channel list) to watch it, add or remove it from favorites, or see more channels from its category.
+- **Previous channel** in the player's More menu.
+- **Search** is cleared when you leave the app, so old results don't come back.
+- The player and its controls are unchanged.

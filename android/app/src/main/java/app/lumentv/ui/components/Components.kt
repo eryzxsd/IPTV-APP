@@ -139,8 +139,8 @@ fun ChannelRow(
 ) {
     val colors = MaterialTheme.colorScheme
     Surface(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp).clip(MaterialTheme.shapes.medium)
+            .channelClickable(channel, onClick),
         shape = MaterialTheme.shapes.medium,
         color = if (active) colors.primaryContainer.copy(alpha = 0.45f) else Color.Transparent,
     ) {

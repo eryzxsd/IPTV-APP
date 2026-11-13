@@ -1,5 +1,7 @@
 package app.lumentv.ui.home
 
+import androidx.compose.foundation.layout.fillMaxSize
+import app.lumentv.ui.components.channelClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -56,7 +58,11 @@ fun LazyListScope.recommendationItems(rows: List<HomeRow>, epg: EpgData, clock: 
                 Text(row.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 row.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
+            // Lazy rows keep their scroll anchored to an item when the list changes; start at the front again.
+            val rowState = androidx.compose.foundation.lazy.rememberLazyListState()
+            androidx.compose.runtime.LaunchedEffect(row.channels.firstOrNull()?.id) { if (rowState.firstVisibleItemIndex <= 1) rowState.scrollToItem(0) }
             LazyRow(
+                state = rowState,
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
@@ -74,10 +80,9 @@ private fun hue(name: String) = (name.fold(0) { h, c -> (h * 31 + c.code) % 360 
 fun ChannelCard(channel: Channel, now: Programme?, clock: Long, active: Boolean, onClick: () -> Unit) {
     val h = hue(channel.name)
     Surface(
-        onClick = onClick,
         shape = MaterialTheme.shapes.medium,
         color = Color.Transparent,
-        modifier = Modifier.width(168.dp),
+        modifier = Modifier.width(168.dp).clip(MaterialTheme.shapes.medium).channelClickable(channel, onClick),
     ) {
         // Bottom padding keeps the text clear of the rounded corner's clip.
         Column(Modifier.padding(bottom = 8.dp)) {
@@ -157,6 +162,45 @@ fun FeaturedCard(channel: Channel, now: Programme?, clock: Long, onPlay: () -> U
                 }
                 Spacer(Modifier.width(16.dp))
                 ChannelLogo(channel, 84.dp)
+            }
+        }
+    }
+}
+
+/** Category tiles at the end of Home: tap one to see its channels. */
+fun LazyListScope.browseItems(categories: List<Pair<String, Int>>, favorites: Int, onBrowse: (String?) -> Unit) {
+    if (categories.isEmpty()) return
+    item(key = "browse") {
+        Column(Modifier.padding(top = 20.dp)) {
+            Text("Browse", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
+            androidx.compose.foundation.lazy.LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                item(key = "all") { CategoryTile("All channels", null) { onBrowse(null) } }
+                if (favorites > 0) item(key = "fav") { CategoryTile("Favorites", "$favorites") { onBrowse(FAVORITES) } }
+                items(categories, key = { it.first }) { (name, count) -> CategoryTile(name, "$count channels") { onBrowse(name) } }
+            }
+        }
+    }
+}
+
+/** [browseItems] passes this for the Favorites tile. */
+const val FAVORITES = "\u0000favorites"
+
+@Composable
+private fun CategoryTile(name: String, detail: String?, onClick: () -> Unit) {
+    val h = hue(name)
+    Surface(onClick = onClick, shape = MaterialTheme.shapes.medium, color = Color.Transparent, modifier = Modifier.width(140.dp).height(76.dp)) {
+        Box(
+            Modifier.fillMaxSize()
+                .background(Brush.linearGradient(listOf(Color.hsv(h, 0.6f, 0.45f), Color.hsv((h + 60) % 360, 0.65f, 0.2f))))
+                .padding(10.dp),
+            contentAlignment = Alignment.BottomStart,
+        ) {
+            Column {
+                Text(name, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 15.sp)
+                if (detail != null) Text(detail, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
             }
         }
     }

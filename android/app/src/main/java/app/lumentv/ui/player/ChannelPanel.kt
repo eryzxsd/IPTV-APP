@@ -1,5 +1,7 @@
 package app.lumentv.ui.player
 
+import androidx.compose.ui.draw.clip
+import app.lumentv.ui.components.channelClickable
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -199,10 +201,9 @@ private fun PanelChip(label: String, selected: Boolean, icon: androidx.compose.u
 @Composable
 private fun PanelRow(channel: Channel, now: Programme?, clock: Long, active: Boolean, favorite: Boolean, onClick: () -> Unit) {
     Surface(
-        onClick = onClick,
         shape = MaterialTheme.shapes.medium,
         color = if (active) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else Color.Transparent,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp).clip(MaterialTheme.shapes.medium).channelClickable(channel, onClick),
     ) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             ChannelLogo(channel, 40.dp)

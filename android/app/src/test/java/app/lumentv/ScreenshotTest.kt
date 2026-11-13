@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -52,10 +53,23 @@ class ScreenshotTest {
 
     @Test fun phone() {
         waitForData()
+        rule.runOnUiThread { rule.activity.vm.player.stop() }
+        rule.mainClock.advanceTimeBy(1_000)
+        shot("0a-home-idle")
+        rule.onRoot().performTouchInput { swipeUp() }
+        rule.mainClock.advanceTimeBy(1_000)
+        shot("0b-home-idle-scrolled")
+        rule.onRoot().performTouchInput { swipeDown(); swipeDown() }
+        rule.mainClock.advanceTimeBy(500)
         shot("0-home")
         rule.onAllNodesWithText("Channels").onFirst().performClick()
         rule.mainClock.advanceTimeBy(1_000)
         shot("1-channels")
+        rule.onAllNodesWithText(rule.activity.vm.filtered.value.first().name).onFirst().performTouchInput { longClick() }
+        rule.mainClock.advanceTimeBy(1_000)
+        shot("1b-channel-options")
+        androidx.test.espresso.Espresso.pressBack()
+        rule.mainClock.advanceTimeBy(800)
 
         rule.onAllNodesWithText("Category").onFirst().performClick()
         rule.mainClock.advanceTimeBy(1_000)

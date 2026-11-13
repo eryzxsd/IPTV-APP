@@ -1,5 +1,6 @@
 package app.lumentv.ui.player
 
+import androidx.compose.material.icons.rounded.History
 import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.pm.PackageManager
@@ -142,7 +143,14 @@ fun LiveIndicator(controller: PlayerController) {
 @kotlin.OptIn(ExperimentalMaterial3Api::class)
 @OptIn(UnstableApi::class)
 @Composable
-fun PlayerSheetHost(sheet: PlayerSheet?, controller: PlayerController, playback: PlaybackState, onSheet: (PlayerSheet?) -> Unit) {
+fun PlayerSheetHost(
+    sheet: PlayerSheet?,
+    controller: PlayerController,
+    playback: PlaybackState,
+    onSheet: (PlayerSheet?) -> Unit,
+    previous: app.lumentv.data.Channel? = null,
+    onPrevious: () -> Unit = {},
+) {
     if (sheet == null) return
     val activity = LocalContext.current as? Activity
     val pip = rememberPip(activity)
@@ -185,6 +193,9 @@ fun PlayerSheetHost(sheet: PlayerSheet?, controller: PlayerController, playback:
 
                 PlayerSheet.More -> {
                     SheetTitle("More", null)
+                    if (previous != null && previous.id != playback.channel?.id) {
+                        MenuRow(Icons.Rounded.History, "Previous channel", previous.name) { onSheet(null); onPrevious() }
+                    }
                     MenuRow(Icons.Rounded.AspectRatio, "Aspect ratio", playback.aspect.label) { onSheet(PlayerSheet.Aspect) }
                     MenuRow(
                         Icons.Rounded.Bedtime,
