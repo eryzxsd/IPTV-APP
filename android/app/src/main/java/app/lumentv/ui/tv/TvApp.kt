@@ -1,6 +1,15 @@
 package app.lumentv.ui.tv
 
+import android.app.Activity
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import app.lumentv.ui.Filter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,7 +39,7 @@ import app.lumentv.ui.player.PlaybackState
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
-enum class TvScreen { Home, Player, Guide, Search, Settings }
+enum class TvScreen { Home, Player, Guide, Search, Settings, Browse }
 
 /** Navigation for the TV interface. */
 class TvNav(private val stack: MutableList<TvScreen>) {
@@ -53,10 +62,33 @@ class TvNav(private val stack: MutableList<TvScreen>) {
 fun TvApp(vm: MainViewModel) {
     val saved = rememberSaveable { arrayListOf(TvScreen.Home.name) }
     val stack = remember { mutableStateListOf<TvScreen>().apply { addAll(saved.map(TvScreen::valueOf)) } }
-    LaunchedEffect(stack.toList()) { saved.clear(); saved.addAll(stack.map { it.name }) }
+    // Search isn't kept: coming back to the app starts without the old search.
+    LaunchedEffect(stack.toList()) { saved.clear(); saved.addAll(stack.filter { it != TvScreen.Search && it != TvScreen.Browse }.map { it.name }) }
     val nav = remember { TvNav(stack) }
     val screen = stack.last()
     BackHandler(enabled = nav.canGoBack) { nav.back() }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (TvScreen.Search in stack) {
+            stack.remove(TvScreen.Search)
+            if (stack.isEmpty()) stack.add(TvScreen.Home)
+        }
+    }
+
+    // On Home, Back twice exits (a single press is easy to hit by accident).
+    val context = LocalContext.current
+    var lastBack by remember { mutableLongStateOf(0L) }
+    BackHandler(enabled = !nav.canGoBack) {
+        val now = System.currentTimeMillis()
+        if (now - lastBack < 2_500) (context as? Activity)?.finish()
+        else {
+            lastBack = now
+            Toast.makeText(context, "Press Back again to exit", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    var browse by remember { mutableStateOf<BrowseTarget>(BrowseTarget.All) }
+    var options by remember { mutableStateOf<Channel?>(null) }
+    val openBrowse: (BrowseTarget) -> Unit = { browse = it; nav.open(TvScreen.Browse) }
 
     val playback by vm.player.state.collectAsStateWithLifecycle()
     val exo by vm.player.playerFlow.collectAsStateWithLifecycle()
@@ -108,19 +140,28 @@ fun TvApp(vm: MainViewModel) {
             }
             // Dim the video behind the browsing screens.
             val scrim = when (screen) {
-                TvScreen.Player -> 0f
-                TvScreen.Home -> if (playback.channel != null) 0.80f else 1f
+                TvScreen.Player, TvScreen.Home -> 0f // Home draws its own backdrop over the video
                 else -> 1f
             }
             if (scrim > 0f) Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = scrim)))
 
             when (screen) {
-                TvScreen.Home -> TvHome(vm, onPlay = play, onOpen = nav::open)
+                TvScreen.Home -> TvHome(vm, onPlay = play, onOpen = nav::open, onBrowse = openBrowse, onOptions = { options = it })
                 TvScreen.Player -> TvPlayer(vm, onOpen = nav::open, onExit = nav::back)
-                TvScreen.Guide -> TvGuide(vm, onPlay = play)
-                TvScreen.Search -> TvSearch(vm, onPlay = play)
+                TvScreen.Guide -> TvGuide(vm, onPlay = play, onOptions = { options = it })
+                TvScreen.Search -> TvSearch(vm, onPlay = play, onOptions = { options = it })
                 TvScreen.Settings -> TvSettings(vm)
+                TvScreen.Browse -> TvBrowse(vm, browse, onPlay = { c ->
+                    // Channel up/down then moves through what you were browsing.
+                    vm.filter.value = when (val b = browse) {
+                        BrowseTarget.All -> Filter.All
+                        BrowseTarget.Favorites -> Filter.Favorites
+                        is BrowseTarget.Category -> Filter.Group(b.name)
+                    }
+                    play(c)
+                }, onOptions = { options = it })
             }
+            options?.let { c -> ChannelOptions(vm, c, onPlay = play, onBrowse = openBrowse, onDismiss = { options = null }) }
         } }
     }
 }

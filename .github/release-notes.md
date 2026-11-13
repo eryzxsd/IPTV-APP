@@ -11,16 +11,17 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
 - **Android**: download the APK on your device and open it. Allow "Install unknown apps" for your browser or file manager when asked.
   On Android TV, sideload it with a file manager or `adb install`.
 
-## What's new in 1.7.0
+## What's new in 1.8.0 (Android TV)
 
-- **The Android TV interface now uses Jetpack Compose and Material 3**, the same as the phone app, instead of Leanback views. Phones and tablets are unchanged.
-  - **Home**: what's playing (with its programme and what's next), then rows of recommendations and what's on now. The channel you're watching keeps playing behind them.
-  - **Player**:
-    - **OK** shows the info bar and the Play, Channels, Subtitles, Audio, Quality, More and Favorite buttons.
-    - **Up/Down** or **CH+/CH−** change channel.
-    - **Left**, **Guide** or **Menu** opens the channel list.
-    - **Back** closes what's open, then returns to Home.
-  - **TV guide**: channels on the left, the schedule of the selected channel on the right.
-  - **Search** by channel, category or programme, with voice search.
-  - **Settings**: the same options as the phone app, with a clear highlight on the focused option.
-  - The focused card or button always has a white outline, so it's easy to see where you are.
+- **New Home, in the style of streaming apps.**
+  - A large banner shows the channel you're on: what's airing, its description, how long is left and what's next. The playing channel shows as live video behind it.
+  - Rows of channels sit below the banner. **Recommended for you** comes first, so Home opens on recommendations instead of only your last channel.
+  - A slim menu on the left (press Left) opens Search, Home, TV guide, All channels and Settings.
+  - A new **Browse** row has tiles for All channels, Favorites and every category, each opening a grid of channels.
+- **Channel options:** hold OK (or press Menu) on any channel to watch it, add or remove it from favorites, or see more channels from its category.
+- **Number keys:** type a channel number to jump to it. The number and channel name show while you type. Channel numbers appear in the info bar and the channel list.
+- **Last channel:** the remote's Last/Back-channel button returns to the previous channel. It's also under More in the player.
+- **Channel list filter:** choose All channels, Favorites, Recently watched or any category from the top of the channel list. Channel up/down then follows that list. Browsing a category does the same.
+- **Pause:** the info bar stays on screen with a **PAUSED** label while paused.
+- **Search** starts empty each time and no longer comes back with old results when you return to the app.
+- **Exiting:** press Back twice on Home to exit, so a single press doesn't close the app by accident.

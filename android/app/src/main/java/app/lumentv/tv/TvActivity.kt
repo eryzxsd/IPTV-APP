@@ -51,6 +51,7 @@ class TvActivity : ComponentActivity() {
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { vm.player.togglePlay(); return true }
             KeyEvent.KEYCODE_MEDIA_PLAY -> { if (!vm.player.player.isPlaying) vm.player.togglePlay(); return true }
             KeyEvent.KEYCODE_MEDIA_PAUSE -> { vm.player.player.pause(); return true }
+            KeyEvent.KEYCODE_LAST_CHANNEL -> { vm.playPrevious(); return true }
         }
         return super.onKeyDown(keyCode, event)
     }

@@ -1,7 +1,17 @@
 package app.lumentv.ui.tv
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material3.ripple
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -65,9 +75,20 @@ private fun hue(name: String) = (name.fold(0) { h, c -> (h * 31 + c.code) % 360 
 suspend fun FocusRequester.requestWhenReady() {
     repeat(5) {
         awaitFrame()
-        if (runCatching { requestFocus() }.isSuccess) return
+        if (runCatching { requestFocus() }.getOrDefault(false)) return
     }
 }
+
+/**
+ * Click for the remote: OK plays, long-press OK or the Menu button opens [onLongClick] (channel options).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+fun Modifier.tvClickable(source: MutableInteractionSource, onClick: () -> Unit, onLongClick: (() -> Unit)?): Modifier =
+    this
+        .onPreviewKeyEvent { e ->
+            if (onLongClick != null && e.type == KeyEventType.KeyDown && e.key == Key.Menu) { onLongClick(); true } else false
+        }
+        .combinedClickable(interactionSource = source, indication = ripple(), onClick = onClick, onLongClick = onLongClick)
 
 /** Pill button for the player and top bar: violet with a white outline when focused. */
 @Composable
@@ -114,18 +135,21 @@ fun TvChannelCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     width: Dp = 212.dp,
+    onLongClick: (() -> Unit)? = null,
+    favorite: Boolean = false,
+    onFocused: (() -> Unit)? = null,
 ) {
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
+    LaunchedEffect(focused) { if (focused) onFocused?.invoke() }
     val h = hue(channel.name)
     val shape = RoundedCornerShape(14.dp)
     Surface(
-        onClick = onClick,
         modifier = modifier.width(width).graphicsLayer {
             val s = if (focused) 1.07f else 1f
             scaleX = s
             scaleY = s
-        },
+        }.clip(shape).tvClickable(source, onClick, onLongClick),
         shape = shape,
         color = if (focused) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainer,
         border = when {
@@ -133,7 +157,6 @@ fun TvChannelCard(
             playing -> BorderStroke(2.dp, Brand.Cyan)
             else -> null
         },
-        interactionSource = source,
     ) {
         Column {
             Box(
@@ -155,6 +178,9 @@ fun TvChannelCard(
                     )
                 } else if (now != null) {
                     Box(Modifier.align(Alignment.TopStart).padding(8.dp)) { LiveBadge() }
+                }
+                if (favorite) {
+                    Icon(Icons.Rounded.Star, "Favorite", tint = Brand.Warn, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(20.dp))
                 }
                 if (now != null) GradientProgress(now.progress(clock), Modifier.align(Alignment.BottomCenter).fillMaxWidth(), height = 4.dp)
             }
@@ -213,13 +239,14 @@ fun TvChannelRow(
     modifier: Modifier = Modifier,
     favorite: Boolean = false,
     onFocused: (() -> Unit)? = null,
+    number: Int? = null,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     LaunchedEffect(focused) { if (focused) onFocused?.invoke() }
     Surface(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).tvClickable(source, onClick, onLongClick),
         shape = RoundedCornerShape(12.dp),
         color = when {
             focused -> TvFocus.fill
@@ -227,9 +254,17 @@ fun TvChannelRow(
             else -> Color.Transparent
         },
         contentColor = Color.White,
-        interactionSource = source,
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (number != null) {
+                Text(
+                    "$number",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (focused) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(52.dp),
+                )
+            }
             ChannelLogo(channel, 52.dp)
             Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

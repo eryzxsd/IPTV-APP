@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.automirrored.rounded.List
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Pause
@@ -66,6 +67,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lumentv.data.ClockMode
 import app.lumentv.data.nowAndNext
 import app.lumentv.ui.MainViewModel
+import app.lumentv.ui.Filter
 import app.lumentv.ui.components.ChannelLogo
 import app.lumentv.ui.components.GradientProgress
 import app.lumentv.ui.components.LiveBadge
@@ -105,13 +107,29 @@ fun TvPlayer(vm: MainViewModel, onOpen: (TvScreen) -> Unit, onExit: () -> Unit) 
 
     val error = playback.status == PlaybackState.Status.Error
     val message = error || playback.slow
+    val paused = !playback.isPlaying && playback.status == PlaybackState.Status.Playing
+
+    // Channel numbers (position in the current list) for the number keys.
+    val filtered by vm.filtered.collectAsStateWithLifecycle()
+    val allChannels by vm.channels.collectAsStateWithLifecycle()
+    val list = filtered.ifEmpty { allChannels }
+    val number = remember(list, channel?.id) { list.indexOfFirst { it.id == channel?.id }.takeIf { it >= 0 }?.plus(1) }
+    var digits by remember { mutableStateOf("") }
+    LaunchedEffect(digits) {
+        if (digits.isEmpty()) return@LaunchedEffect
+        delay(1_600)
+        digits.toIntOrNull()?.let { n -> list.getOrNull(n - 1)?.let(vm::play) }
+        digits = ""
+    }
 
     // Nothing playing (stopped elsewhere): go back Home.
     LaunchedEffect(channel == null) { if (channel == null) onExit() }
     // Show the channel name for a moment after changing channel.
     LaunchedEffect(channel?.id) { if (!panel && overlay == Overlay.None) overlay = Overlay.Info }
-    LaunchedEffect(overlay, poke, dialog, panel) {
-        if (overlay != Overlay.None && dialog == null && !panel) {
+    // While paused, the info bar stays up.
+    LaunchedEffect(paused) { if (paused && overlay == Overlay.None && !panel) overlay = Overlay.Info }
+    LaunchedEffect(overlay, poke, dialog, panel, paused) {
+        if (overlay != Overlay.None && dialog == null && !panel && !paused) {
             delay(if (overlay == Overlay.Info) 4_000 else 6_000)
             overlay = Overlay.None
         }
@@ -136,7 +154,11 @@ fun TvPlayer(vm: MainViewModel, onOpen: (TvScreen) -> Unit, onExit: () -> Unit) 
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 val k = e.key
                 val menu = k == Key.Guide || k == Key.Menu
+                val digit = digitOf(e.nativeKeyEvent.keyCode)
                 when {
+                    // Number keys type a channel number; it switches after a short pause.
+                    digit != null && !panel -> { if (digits.length < 5) digits += digit; true }
+                    k == Key.LastChannel -> { vm.playPrevious(); true }
                     panel -> when (k) {
                         Key.Back, Key.DirectionRight -> { panel = false; true }
                         else -> if (menu) { panel = false; true } else false
@@ -231,9 +253,13 @@ fun TvPlayer(vm: MainViewModel, onOpen: (TvScreen) -> Unit, onExit: () -> Unit) 
                     ChannelLogo(channel, 96.dp)
                     Column(Modifier.padding(start = 24.dp).weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (number != null) Text("$number", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Brand.Cyan)
                             Text(channel.name, fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false))
-                            if (playback.isLive) LiveBadge()
+                            if (paused) {
+                                Text("PAUSED", color = Color.Black, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp,
+                                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Brand.Warn).padding(horizontal = 8.dp, vertical = 3.dp))
+                            } else if (playback.isLive) LiveBadge()
                             val q = QualityLogic.chipLabel(playback.autoQuality, playback.video, playback.currentQuality, channel.quality)
                             if (playback.status == PlaybackState.Status.Playing || q != "Auto") {
                                 Text(q, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp,
@@ -274,6 +300,18 @@ fun TvPlayer(vm: MainViewModel, onOpen: (TvScreen) -> Unit, onExit: () -> Unit) 
         }
 
         if (panel) ChannelPanel(vm, onClose = { panel = false })
+
+        // The channel number being typed, with a preview of where it goes.
+        if (digits.isNotEmpty()) {
+            val target = digits.toIntOrNull()?.let { list.getOrNull(it - 1) }
+            Column(
+                Modifier.align(Alignment.TopStart).padding(32.dp).clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = 0.75f)).padding(horizontal = 22.dp, vertical = 14.dp),
+            ) {
+                Text(digits, fontSize = 44.sp, fontWeight = FontWeight.Bold, color = Brand.Cyan)
+                Text(target?.name ?: "No channel ${digits}", fontSize = 16.sp, color = Color.White, maxLines = 1)
+            }
+        }
     }
 
     PlayerDialogs(vm, dialog, onDialog = { dialog = it; poke++ }, onOpen = onOpen, onPanel = { panel = true })
@@ -287,12 +325,24 @@ private fun BoxScope.ChannelPanel(vm: MainViewModel, onClose: () -> Unit) {
     val clock by vm.clock.collectAsStateWithLifecycle()
     val playback by vm.player.state.collectAsStateWithLifecycle()
     val lib by vm.library.collectAsStateWithLifecycle()
+    val filter by vm.filter.collectAsStateWithLifecycle()
+    val groups by vm.groups.collectAsStateWithLifecycle()
     val list = filtered.ifEmpty { all }
-    val start = remember { list.indexOfFirst { it.id == playback.channel?.id }.coerceAtLeast(0) }
+    val start = remember(filter) { list.indexOfFirst { it.id == playback.channel?.id }.coerceAtLeast(0) }
     val state = rememberLazyListState(initialFirstVisibleItemIndex = (start - 3).coerceAtLeast(0))
+    LaunchedEffect(filter) { state.scrollToItem((start - 3).coerceAtLeast(0)) }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestWhenReady() }
+    LaunchedEffect(filter) { focus.requestWhenReady() }
     val favorites = remember(lib.favorites) { lib.favorites.toHashSet() }
+    var choosing by remember { mutableStateOf(false) }
+    val choices = remember(groups) {
+        listOf<Pair<String, Filter>>("All channels" to Filter.All, "Favorites" to Filter.Favorites, "Recently watched" to Filter.Recent) +
+            groups.filter { it.first != "Other" }.sortedByDescending { it.second }.map { (g, n) -> "$g ($n)" to Filter.Group(g) }
+    }
+    if (choosing) {
+        TvChoiceDialog("Show", choices.map { it.first }, choices.indexOfFirst { it.second == filter },
+            onPick = { vm.filter.value = choices[it].second; choosing = false }, onDismiss = { choosing = false })
+    }
 
     Column(
         Modifier.align(Alignment.CenterStart).width(500.dp).fillMaxHeight()
@@ -300,13 +350,20 @@ private fun BoxScope.ChannelPanel(vm: MainViewModel, onClose: () -> Unit) {
     ) {
         Text("Channels", fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 28.dp))
         Text("${list.size} channels · OK to watch · Right to close", color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 28.dp, end = 28.dp, bottom = 12.dp))
+            modifier = Modifier.padding(start = 28.dp, end = 28.dp, bottom = 10.dp))
+        TvButton(
+            choices.firstOrNull { it.second == filter }?.first?.substringBefore(" (") ?: "All channels",
+            { choosing = true },
+            icon = Icons.Rounded.FilterList,
+            modifier = Modifier.padding(start = 24.dp, bottom = 10.dp),
+        )
         LazyColumn(state = state, contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 24.dp)) {
             itemsIndexed(list, key = { _, c -> c.id }) { i, c ->
                 val playing = c.id == playback.channel?.id
                 TvChannelRow(
                     c, epg[c.epgKey].nowAndNext(clock).first, clock, playing,
                     favorite = c.id in favorites,
+                    number = i + 1,
                     onClick = { if (playing) onClose() else vm.play(c) },
                     modifier = if (i == start) Modifier.focusRequester(focus) else Modifier,
                 )
@@ -349,6 +406,7 @@ private fun PlayerDialogs(vm: MainViewModel, dialog: Dialog?, onDialog: (Dialog?
                 add("Picture: ${s.aspect.label}" to { onDialog(Dialog.Picture) })
                 add((s.sleepAt?.let { "Sleep timer: ${fmtDuration(it - System.currentTimeMillis())} left" } ?: "Sleep timer: Off") to { onDialog(Dialog.Sleep) })
                 add("Stream info" to { onDialog(Dialog.Info) })
+                vm.previousChannel.value?.let { p -> add("Previous channel: ${p.name}" to { vm.playPrevious(); close() }) }
                 add("Channel list" to { close(); onPanel() })
                 add("TV guide" to { close(); onOpen(TvScreen.Guide) })
                 add("Reload stream" to { vm.player.retry(); close() })
@@ -397,4 +455,11 @@ private fun InfoDialog(title: String, text: String, onDismiss: () -> Unit) {
         text = { Text(text, fontSize = 16.sp) },
         confirmButton = { TextButton(onClick = onDismiss, modifier = Modifier.focusRequester(focus)) { Text("OK") } },
     )
+}
+
+/** 0–9 from the remote's number keys (or a keyboard's number row / keypad). */
+private fun digitOf(keyCode: Int): Char? = when (keyCode) {
+    in android.view.KeyEvent.KEYCODE_0..android.view.KeyEvent.KEYCODE_9 -> '0' + (keyCode - android.view.KeyEvent.KEYCODE_0)
+    in android.view.KeyEvent.KEYCODE_NUMPAD_0..android.view.KeyEvent.KEYCODE_NUMPAD_9 -> '0' + (keyCode - android.view.KeyEvent.KEYCODE_NUMPAD_0)
+    else -> null
 }

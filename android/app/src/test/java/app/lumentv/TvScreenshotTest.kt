@@ -2,17 +2,17 @@ package app.lumentv
 
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import app.lumentv.tv.TvActivity
-import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
-import androidx.compose.ui.test.isRoot
-import androidx.compose.ui.test.onLast
+import com.github.takahirom.roborazzi.captureScreenRoboImage
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
@@ -46,13 +46,18 @@ class TvScreenshotTest {
 
     private fun key(k: Key, times: Int = 1) = repeat(times) {
         rule.onAllNodes(isRoot()).onLast().performKeyInput { pressKey(k) }
-        rule.mainClock.advanceTimeBy(200)
+        rule.mainClock.advanceTimeBy(250)
     }
 
     /** Back as the system delivers it when the screen doesn't handle the key itself. */
     private fun systemBack() {
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.mainClock.advanceTimeBy(300)
+    }
+
+    private fun clickText(t: String) {
+        rule.onAllNodesWithText(t).onFirst().performClick()
+        rule.mainClock.advanceTimeBy(400)
     }
 
     @Test fun tv() {
@@ -62,48 +67,41 @@ class TvScreenshotTest {
         Thread.sleep(3_000)
         shot("tv-0-home")
         key(Key.DirectionRight, 2)
+        shot("tv-1-home-right")
         key(Key.DirectionDown)
-        shot("tv-1-home-focus")
-
-        // Play a channel with guide data.
-        val vm = rule.activity.vm
-        val ch = vm.channels.value.first { !vm.epg.value[it.epgKey].isNullOrEmpty() }
-        rule.runOnUiThread { vm.play(ch) }
-        rule.mainClock.advanceTimeBy(500)
-        shot("tv-2-home-playing")
-        key(Key.DirectionCenter) // "Now playing" has focus
-        shot("tv-3-player-info")
+        shot("tv-1b-home-down")
+        key(Key.DirectionDown, 3)
+        shot("tv-1c-home-down-more")
+        key(Key.Menu)
+        shot("tv-1d-options")
+        clickText("Watch")
+        shot("tv-2-player-info")
         key(Key.DirectionCenter)
-        shot("tv-4-player-controls")
-        key(Key.DirectionRight, 4)
-        key(Key.DirectionCenter)
-        shot("tv-5-player-quality")
-        // Dialogs close with Back on a device; the test's key injection doesn't reach the dialog's back handler.
-        rule.onAllNodesWithText("OK").onFirst().performClick()
-        rule.onAllNodesWithText("Close").let { if (it.fetchSemanticsNodes().isNotEmpty()) it.onFirst().performClick() }
+        shot("tv-3-player-controls")
         key(Key.Back)
+        key(Key.Two)
+        key(Key.One)
+        shot("tv-4-number-entry")
+        rule.mainClock.advanceTimeBy(2_000)
         key(Key.DirectionLeft)
         rule.mainClock.advanceTimeBy(500)
-        shot("tv-6-channel-panel")
-        key(Key.DirectionDown, 2)
-        shot("tv-6b-channel-panel-moved")
-        key(Key.Back) // closes the list
-        systemBack() // back to Home
-        shot("tv-6c-home-return")
-        rule.onAllNodesWithText("Guide").onFirst().performClick()
+        shot("tv-5-channel-panel")
+        key(Key.Back)
+        systemBack()
         rule.mainClock.advanceTimeBy(500)
-        shot("tv-7-guide")
-        key(Key.DirectionDown)
-        shot("tv-7b-guide-moved")
-        systemBack()
+        shot("tv-6-home-playing")
 
-        rule.onAllNodesWithText("Search").onFirst().performClick()
-        shot("tv-8-search")
+        key(Key.DirectionLeft)
+        shot("tv-7-side-menu")
+        clickText("All channels")
+        shot("tv-8-browse")
         systemBack()
-
-        rule.onAllNodesWithText("Settings").onFirst().performClick()
-        shot("tv-9-settings")
-        key(Key.DirectionDown, 2)
-        shot("tv-9b-settings-moved")
+        key(Key.DirectionLeft)
+        clickText("Search")
+        shot("tv-9-search")
+        systemBack()
+        key(Key.DirectionLeft)
+        clickText("TV guide")
+        shot("tv-10-guide")
     }
 }

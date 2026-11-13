@@ -203,7 +203,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _epg.value = runCatching { repo.retryFailedEpg(channels.value, urls, _epg.value) }.getOrDefault(_epg.value)
     }
 
+    /** The channel before the current one, for the remote's "last channel" button. */
+    val previousChannel = MutableStateFlow<Channel?>(null)
+
     fun play(c: Channel) {
+        player.state.value.channel?.takeIf { it.id != c.id }?.let { previousChannel.value = it }
         player.play(c)
         lastChannel.value = c
         viewModelScope.launch { prefs.markWatched(c.id) }
@@ -217,6 +221,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val i = list.indexOfFirst { it.id == cur?.id }
         play(list[Math.floorMod(i + direction, list.size)])
     }
+
+    /** Back to the channel watched before this one. */
+    fun playPrevious() { previousChannel.value?.let(::play) }
 
     fun toggleFavorite(c: Channel) = viewModelScope.launch { prefs.toggleFavorite(c.id) }
     fun setHideOffline(v: Boolean) = viewModelScope.launch { prefs.setHideOffline(v) }
