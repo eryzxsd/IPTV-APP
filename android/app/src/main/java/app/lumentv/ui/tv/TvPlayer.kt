@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -294,6 +295,8 @@ fun TvPlayer(vm: MainViewModel, onOpen: (TvScreen) -> Unit, onExit: () -> Unit) 
                         val fav = channel.id in lib.favorites
                         TvButton(if (fav) "Saved" else "Favorite", { vm.toggleFavorite(channel) },
                             icon = if (fav) Icons.Rounded.Star else Icons.Rounded.StarBorder, selected = fav)
+                        // Stop watching and go back to Home as it looks when the app opens.
+                        TvButton("Close", { vm.player.stop() }, icon = Icons.Rounded.Close)
                     }
                 }
             }

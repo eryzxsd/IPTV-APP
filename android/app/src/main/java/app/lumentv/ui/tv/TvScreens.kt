@@ -298,7 +298,9 @@ fun ChannelOptions(vm: MainViewModel, c: Channel, onPlay: (Channel) -> Unit, onB
     val fav = c.id in lib.favorites
     val group = c.groups.firstOrNull { it != "Other" }
     val items = buildList<Pair<String, () -> Unit>> {
-        add("Watch" to { onDismiss(); onPlay(c) })
+        val playing = vm.player.state.value.channel?.id == c.id
+        add((if (playing) "Return to the video" else "Watch") to { onDismiss(); onPlay(c) })
+        if (playing) add("Stop playing" to { vm.player.stop(); onDismiss() })
         add((if (fav) "Remove from favorites" else "Add to favorites") to { vm.toggleFavorite(c); onDismiss() })
         if (group != null) add("More $group channels" to { onDismiss(); onBrowse(BrowseTarget.Category(group)) })
     }

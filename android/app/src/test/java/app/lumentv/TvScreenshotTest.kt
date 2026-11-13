@@ -103,5 +103,15 @@ class TvScreenshotTest {
         key(Key.DirectionLeft)
         clickText("TV guide")
         shot("tv-10-guide")
+        systemBack()
+        rule.mainClock.advanceTimeBy(800)
+        key(Key.DirectionCenter) // "Now playing" card -> player
+        rule.mainClock.advanceTimeBy(500)
+        key(Key.DirectionCenter) // controls
+        key(Key.DirectionRight, 7) // ... -> Close
+        shot("tv-11-close-focused")
+        key(Key.DirectionCenter)
+        rule.mainClock.advanceTimeBy(1_000)
+        shot("tv-12-after-close")
     }
 }
