@@ -44,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import app.lumentv.ui.components.ChannelOptionsSheet
+import app.lumentv.ui.search.SearchScreen
 import app.lumentv.ui.components.LocalChannelOptions
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -98,6 +99,11 @@ fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Un
         }
         tab = Tab.Channels
     }
+    // Search from Home's search button.
+    var searching by remember { mutableStateOf(false) }
+    LaunchedEffect(tab) { if (tab != Tab.Home) searching = false }
+    BackHandler(enabled = searching) { searching = false }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { searching = false }
     // Long-press on any channel.
     var options by remember { mutableStateOf<Channel?>(null) }
     // A search isn't kept: coming back to the app starts without the old results.
@@ -121,12 +127,16 @@ fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Un
             containerColor = MaterialTheme.colorScheme.background,
         ) {
             // Idle Home's banner runs under the status bar (it pads its own top bar).
-            val edgeToEdge = videoFullscreen || (tab == Tab.Home && !playing)
+            val edgeToEdge = videoFullscreen || (tab == Tab.Home && !playing && !searching)
             Column(Modifier.fillMaxSize().then(if (edgeToEdge) Modifier else Modifier.statusBarsPadding())) {
                 Box(Modifier.weight(1f)) {
                     val pad = PaddingValues(bottom = 12.dp)
                     when (tab) {
-                        Tab.Home -> HomeScreen(vm, inPip = inPip, onOpen = open, onBrowse = browse)
+                        Tab.Home -> if (searching) {
+                            SearchScreen(vm, onPlay = { c -> searching = false; open(c) }, onBrowse = { g -> searching = false; browse(g) }, onClose = { searching = false })
+                        } else {
+                            HomeScreen(vm, inPip = inPip, onOpen = open, onBrowse = browse, onSearch = { searching = true })
+                        }
                         Tab.Channels -> ChannelsScreen(vm, onOpenPlayer = open, contentPadding = pad)
                         Tab.Guide -> GuideScreen(vm, onPlay = open, contentPadding = pad)
                         Tab.Settings -> SettingsScreen(vm, contentPadding = pad)

@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lumentv.data.Channel
+import app.lumentv.data.ChannelSearch
 import app.lumentv.data.LoadState
 import app.lumentv.data.Programme
 import app.lumentv.data.nowAndNext
@@ -177,16 +178,7 @@ fun TvSearch(vm: MainViewModel, onPlay: (Channel) -> Unit, onOptions: (Channel) 
     }
     val results by produceState(emptyList<Pair<String, List<Channel>>>(), query, all, epg) {
         delay(250)
-        val needle = query.trim().lowercase()
-        value = if (needle.isEmpty()) emptyList() else withContext(Dispatchers.Default) {
-            val now = System.currentTimeMillis()
-            val byName = all.filter { it.name.lowercase().contains(needle) }
-                .sortedWith(compareBy<Channel>({ !it.name.lowercase().startsWith(needle) }, { it.name.length }))
-            val names = byName.map { it.id }.toHashSet()
-            val onNow = all.filter { it.id !in names && epg[it.epgKey].nowAndNext(now).first?.title?.lowercase()?.contains(needle) == true }
-            val inGroup = all.filter { it.id !in names && it.groups.any { g -> g.lowercase().contains(needle) } }
-            listOf("Channels" to byName, "On now" to onNow, "Categories" to inGroup).filter { it.second.isNotEmpty() }
-        }
+        value = withContext(Dispatchers.Default) { ChannelSearch.search(all, epg, query).map { it.title to it.channels } }
     }
 
     Column(Modifier.fillMaxSize().padding(top = 40.dp)) {

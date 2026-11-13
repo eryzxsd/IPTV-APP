@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarOutline
@@ -132,7 +133,7 @@ import java.util.Locale
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun HomeScreen(vm: MainViewModel, inPip: Boolean, onOpen: (Channel) -> Unit, onBrowse: (String?) -> Unit = {}) {
+fun HomeScreen(vm: MainViewModel, inPip: Boolean, onOpen: (Channel) -> Unit, onBrowse: (String?) -> Unit = {}, onSearch: () -> Unit = {}) {
     val playback by vm.player.state.collectAsStateWithLifecycle()
     val epg by vm.epg.collectAsStateWithLifecycle()
     val clock by vm.clock.collectAsStateWithLifecycle()
@@ -179,9 +180,11 @@ fun HomeScreen(vm: MainViewModel, inPip: Boolean, onOpen: (Channel) -> Unit, onB
         }
     }
     BackHandler(enabled = fullscreen && !inPip) { toggleFullscreen() }
+    // Back on Home closes the player and returns to the Home you get when the app opens.
+    BackHandler(enabled = channel != null && !fullscreen && !inPip) { vm.player.stop() }
 
     if (channel == null) {
-        IdleHome(vm, rows, epg, clock, onOpen, categories, lib.favorites.size, onBrowse)
+        IdleHome(vm, rows, epg, clock, onOpen, categories, lib.favorites.size, onBrowse, onSearch)
         return
     }
     val programmes = epg[channel.epgKey]
@@ -269,6 +272,7 @@ private fun IdleHome(
     categories: List<Pair<String, Int>>,
     favorites: Int,
     onBrowse: (String?) -> Unit,
+    onSearch: () -> Unit,
 ) {
     val state by vm.channelState.collectAsStateWithLifecycle()
     val lib by vm.library.collectAsStateWithLifecycle()
@@ -282,7 +286,7 @@ private fun IdleHome(
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
         item(key = "hero") {
-            HomeHero(picks, epg, clock, lib.favorites, onPlay = onOpen, onFavorite = { vm.toggleFavorite(it) }, onSearch = { onBrowse(null) })
+            HomeHero(picks, epg, clock, lib.favorites, onPlay = onOpen, onFavorite = { vm.toggleFavorite(it) }, onSearch = onSearch)
         }
         if (state is LoadState.Loading && rows.isEmpty()) item { LoadingBar(Modifier.padding(16.dp)) }
         recommendationItems(sorted, epg, clock, null, onOpen)
@@ -411,7 +415,8 @@ private fun BoxScope.VideoBox(
                 if (onBack != null) {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Exit fullscreen", tint = Color.White) }
                 } else {
-                    Spacer(Modifier.width(12.dp))
+                    // Close the player and go back to the regular Home.
+                    IconButton(onClick = { vm.player.stop() }) { Icon(Icons.Rounded.Close, "Close player", tint = Color.White) }
                 }
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

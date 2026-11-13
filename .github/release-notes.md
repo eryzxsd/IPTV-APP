@@ -11,11 +11,11 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
 - **Android**: download the APK on your device and open it. Allow "Install unknown apps" for your browser or file manager when asked.
   On Android TV, sideload it with a file manager or `adb install`.
 
-## What's new in 1.9.0 (phones and tablets)
+## What's new in 1.9.1 (phones and tablets)
 
-- **New Home, like the TV app's.** When nothing is playing, Home opens with a full-width banner of top picks. Swipe through them, or let it move on by itself. Each pick shows what's on now, its progress, and **Watch** and **Favorite** buttons. Below it, **Recommended for you** comes first, then the other rows.
-- **Browse** tiles at the end of Home: All channels, Favorites and every category open straight into that list in Channels.
-- **Long-press any channel** (Home, Channels or the fullscreen channel list) to watch it, add or remove it from favorites, or see more channels from its category.
-- **Previous channel** in the player's More menu.
-- **Search** is cleared when you leave the app, so old results don't come back.
-- The player and its controls are unchanged.
+- **Search from Home:** the search button on Home opens a search like the TV app's.
+  - Results come in rows: channels by name, shows on now, and matching categories.
+  - With nothing typed, it suggests categories to browse.
+  - It has a voice search button.
+  - Long-press a result for channel options.
+- **Close the player:** tap the new ✕ in the top-left of the player, or press Back on Home. Home goes back to how it looks when the app opens, with the banner of top picks and the recommendations.

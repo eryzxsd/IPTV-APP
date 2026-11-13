@@ -12,6 +12,9 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -59,6 +62,20 @@ class ScreenshotTest {
         rule.onRoot().performTouchInput { swipeUp() }
         rule.mainClock.advanceTimeBy(1_000)
         shot("0b-home-idle-scrolled")
+        rule.onRoot().performTouchInput { swipeDown(); swipeDown() }
+        rule.mainClock.advanceTimeBy(500)
+        rule.onNodeWithContentDescription("Search channels").performClick()
+        rule.mainClock.advanceTimeBy(800)
+        shot("0c-search-empty")
+        rule.onNode(hasSetTextAction()).performTextInput("news")
+        rule.mainClock.advanceTimeBy(1_500)
+        Thread.sleep(500)
+        rule.mainClock.advanceTimeBy(500)
+        shot("0d-search-results")
+        androidx.test.espresso.Espresso.pressBack() // keyboard / search
+        rule.mainClock.advanceTimeBy(500)
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.mainClock.advanceTimeBy(800)
         rule.onRoot().performTouchInput { swipeDown(); swipeDown() }
         rule.mainClock.advanceTimeBy(500)
         shot("0-home")
@@ -110,6 +127,11 @@ class ScreenshotTest {
         rule.onAllNodesWithText(ch.name).onFirst().performClick() // plays it on Home
         rule.mainClock.advanceTimeBy(2_000)
         shot("5-home-player")
+        rule.onNodeWithContentDescription("Close player").performClick()
+        rule.mainClock.advanceTimeBy(800)
+        shot("5c-player-closed")
+        rule.runOnUiThread { rule.activity.vm.play(rule.activity.vm.lastChannel.value!!) }
+        rule.mainClock.advanceTimeBy(1_000)
         rule.onRoot().performTouchInput { swipeUp(startY = bottom * 0.8f, endY = bottom * 0.3f) }
         rule.mainClock.advanceTimeBy(1_500)
         shot("5b-home-recommendations")
