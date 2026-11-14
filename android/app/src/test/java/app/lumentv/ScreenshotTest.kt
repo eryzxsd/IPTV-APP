@@ -55,6 +55,14 @@ class ScreenshotTest {
         rule.mainClock.advanceTimeBy(1_000)
     }
 
+    /** Taps the first on-screen node with this exact text (lazy lists keep some off-screen nodes around). */
+    private fun clickVisible(text: String) {
+        val nodes = rule.onAllNodesWithText(text)
+        val i = nodes.fetchSemanticsNodes().indexOfFirst { it.boundsInRoot.width > 0f && it.boundsInRoot.height > 0f }
+        check(i >= 0) { "no visible \"$text\"" }
+        nodes[i].performClick()
+    }
+
     @Test fun phone() {
         waitForData()
         rule.runOnUiThread { rule.activity.vm.player.stop() }
@@ -197,6 +205,15 @@ class ScreenshotTest {
         rule.activity.runOnUiThread { rule.activity.vm.browsing.value = true }
         rule.mainClock.advanceTimeBy(1_500)
         shot("12-fullscreen-browse")
+        clickVisible("Category")
+        rule.mainClock.advanceTimeBy(800)
+        shot("12b-fullscreen-categories")
+        // The category entry shows its name and channel count (a channel row would only say "News").
+        val newsCount = "%,d".format(rule.activity.vm.groups.value.first { it.first == "News" }.second)
+        rule.onAllNodesWithText(newsCount, useUnmergedTree = true).onFirst().performClick()
+        rule.mainClock.advanceTimeBy(800)
+        check(rule.activity.vm.filter.value == app.lumentv.ui.Filter.Group("News")) { "picking a category filters the list" }
+        shot("12c-fullscreen-news")
     }
 
     @Test
