@@ -157,15 +157,8 @@ fun TvApp(vm: MainViewModel) {
                 TvScreen.Guide -> TvGuide(vm, onPlay = play, onOptions = { options = it })
                 TvScreen.Search -> TvSearch(vm, onPlay = play, onOptions = { options = it })
                 TvScreen.Settings -> TvSettings(vm)
-                TvScreen.Browse -> TvBrowse(vm, browse, onPlay = { c ->
-                    // Channel up/down then moves through what you were browsing.
-                    vm.filter.value = when (val b = browse) {
-                        BrowseTarget.All -> Filter.All
-                        BrowseTarget.Favorites -> Filter.Favorites
-                        is BrowseTarget.Category -> Filter.Group(b.name)
-                    }
-                    play(c)
-                }, onOptions = { options = it })
+                // Browse sets the list filter itself, so channel up/down follows what you browsed.
+                TvScreen.Browse -> TvBrowse(vm, browse, onPlay = play, onOptions = { options = it })
             }
             }
             if (withMenu) {

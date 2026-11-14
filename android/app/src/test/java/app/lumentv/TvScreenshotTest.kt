@@ -119,6 +119,9 @@ class TvScreenshotTest {
         key(Key.DirectionLeft) // the side menu works on every screen
         shot("tv-10b-guide-menu")
         key(Key.DirectionRight)
+        key(Key.DirectionRight, 2) // later shows on the timeline
+        key(Key.DirectionDown) // next channel
+        shot("tv-10c-guide-moved")
         systemBack()
         rule.mainClock.advanceTimeBy(800)
         key(Key.DirectionCenter) // "Now playing" card -> player

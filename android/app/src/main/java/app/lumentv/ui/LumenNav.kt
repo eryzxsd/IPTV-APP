@@ -137,7 +137,8 @@ fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Un
                     item(selected = tab == t, onClick = { tab = t }, icon = { Icon(t.icon, null) }, label = { Text(t.label) })
                 }
             },
-            layoutType = if (videoFullscreen) NavigationSuiteType.None else adaptive,
+            // Hidden while watching fullscreen and while searching (more room for results and the keyboard).
+            layoutType = if (videoFullscreen || (tab == Tab.Home && searching)) NavigationSuiteType.None else adaptive,
             containerColor = MaterialTheme.colorScheme.background,
         ) {
             // Idle Home's banner runs under the status bar (it pads its own top bar).

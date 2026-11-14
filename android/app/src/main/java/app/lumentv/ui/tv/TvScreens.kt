@@ -1,5 +1,7 @@
 package app.lumentv.ui.tv
 
+import app.lumentv.ui.Filter
+import androidx.activity.compose.BackHandler
 import android.content.Intent
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -69,97 +71,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-// ------------------------------------------------------------------ guide
-
-/** Two-pane guide: channels with guide data on the left, the focused channel's schedule on the right. */
-@Composable
-fun TvGuide(vm: MainViewModel, onPlay: (Channel) -> Unit, onOptions: (Channel) -> Unit) {
-    val all by vm.channels.collectAsStateWithLifecycle()
-    val epg by vm.epg.collectAsStateWithLifecycle()
-    val clock by vm.clock.collectAsStateWithLifecycle()
-    val state by vm.epgState.collectAsStateWithLifecycle()
-    val playback by vm.player.state.collectAsStateWithLifecycle()
-    val withGuide = remember(all, epg) { all.filter { !epg[it.epgKey].isNullOrEmpty() } }
-    var selected by remember { mutableStateOf<Channel?>(null) }
-    val start = remember(withGuide.isEmpty()) { withGuide.indexOfFirst { it.id == playback.channel?.id }.coerceAtLeast(0) }
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (start - 2).coerceAtLeast(0))
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(withGuide.isNotEmpty()) { if (withGuide.isNotEmpty()) focus.requestWhenReady() }
-
-    Row(Modifier.fillMaxSize()) {
-        Column(Modifier.width(480.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(top = 40.dp)) {
-            Text("TV Guide", fontSize = 30.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 32.dp))
-            Text(
-                when {
-                    state is LoadState.Loading -> (state as LoadState.Loading).label
-                    withGuide.isEmpty() -> "No guide data yet. Choose guide regions in Settings."
-                    else -> "${withGuide.size} of ${all.size} channels have guide data"
-                },
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 32.dp, end = 32.dp, bottom = 12.dp),
-            )
-            LazyColumn(state = listState, contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 24.dp)) {
-                itemsIndexed(withGuide, key = { _, c -> c.id }) { i, c ->
-                    TvChannelRow(
-                        c, epg[c.epgKey].nowAndNext(clock).first, clock, playing = c.id == playback.channel?.id,
-                        onClick = { onPlay(c) },
-                        onLongClick = { onOptions(c) },
-                        onFocused = { selected = c },
-                        modifier = if (i == start) Modifier.focusRequester(focus) else Modifier,
-                    )
-                }
-            }
-        }
-        val c = selected
-        Column(Modifier.weight(1f).fillMaxHeight().padding(start = 40.dp, end = 48.dp, top = 44.dp)) {
-            if (c == null) return@Column
-            val list = remember(c, epg, clock / 60_000) { epg[c.epgKey].orEmpty().filter { it.stop > clock } }
-            Text(c.name, fontSize = 28.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(if (list.isEmpty()) "No guide information" else "OK to watch · Right to browse the schedule", color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 12.dp))
-            LazyColumn(contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                items(list, key = { it.start }) { p -> ProgrammeRow(p, clock) { onPlay(c) } }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProgrammeRow(p: Programme, clock: Long, onClick: () -> Unit) {
-    val source = remember { MutableInteractionSource() }
-    val focused by source.collectIsFocusedAsState()
-    val live = p.isLive(clock)
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = when {
-            focused -> TvFocus.fill
-            live -> Color.White.copy(alpha = 0.07f)
-            else -> Color.Transparent
-        },
-        contentColor = Color.White,
-        interactionSource = source,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
-            Text(fmtTime(p.start), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(120.dp),
-                color = if (focused) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(p.title, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false))
-                    if (live) LiveBadge()
-                }
-                if (!p.desc.isNullOrBlank()) {
-                    Text(p.desc, fontSize = 15.sp, maxLines = if (focused) 4 else 2, overflow = TextOverflow.Ellipsis,
-                        color = if (focused) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            Text(fmtDuration(p.stop - p.start), fontSize = 16.sp, modifier = Modifier.padding(start = 16.dp),
-                color = if (focused) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
 
 // ----------------------------------------------------------------- search
 
@@ -257,49 +168,71 @@ fun TvSettings(vm: MainViewModel) {
 /** Every channel in a category (or all channels / favorites), as a grid. */
 @Composable
 fun TvBrowse(vm: MainViewModel, target: BrowseTarget, onPlay: (Channel) -> Unit, onOptions: (Channel) -> Unit) {
+    val filtered by vm.filtered.collectAsStateWithLifecycle()
     val all by vm.channels.collectAsStateWithLifecycle()
+    val filter by vm.filter.collectAsStateWithLifecycle()
     val lib by vm.library.collectAsStateWithLifecycle()
     val epg by vm.epg.collectAsStateWithLifecycle()
     val clock by vm.clock.collectAsStateWithLifecycle()
     val playback by vm.player.state.collectAsStateWithLifecycle()
-    val list = remember(all, lib.favorites, target) {
-        when (target) {
-            BrowseTarget.All -> all
-            BrowseTarget.Favorites -> all.associateBy { it.id }.let { m -> lib.favorites.mapNotNull(m::get) }
-            is BrowseTarget.Category -> all.filter { target.name in it.groups }
+    // Opened from a tile (category, favorites, all): start on that list. The filter column can change it,
+    // and channel up/down in the player then moves through the same list.
+    LaunchedEffect(target) {
+        vm.filter.value = when (target) {
+            BrowseTarget.All -> Filter.All
+            BrowseTarget.Favorites -> Filter.Favorites
+            is BrowseTarget.Category -> Filter.Group(target.name)
         }
     }
-    val title = when (target) {
-        BrowseTarget.All -> "All channels"
-        BrowseTarget.Favorites -> "Favorites"
-        is BrowseTarget.Category -> target.name
-    }
+    val list = filtered.ifEmpty { if (filter == Filter.All) all else emptyList() }
+    var mode by remember { mutableStateOf(PanelMode.Channels) }
+    BackHandler(enabled = mode != PanelMode.Channels) { mode = PanelMode.Channels }
     val favorites = remember(lib.favorites) { lib.favorites.toHashSet() }
     val first = remember { FocusRequester() }
-    LaunchedEffect(list.isNotEmpty()) { if (list.isNotEmpty()) first.requestWhenReady() }
-
-    Column(Modifier.fillMaxSize().padding(top = 36.dp)) {
-        Text(title, fontSize = 32.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 48.dp))
-        Text("${list.size} channels  ·  OK to watch  ·  hold OK for options", color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 48.dp, end = 48.dp, bottom = 8.dp))
-        if (list.isEmpty()) {
-            Text("Nothing here yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(48.dp))
+    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    var focusGrid by remember { mutableStateOf(0) }
+    LaunchedEffect(list.firstOrNull()?.id, focusGrid) {
+        if (list.isNotEmpty()) {
+            gridState.scrollToItem(0)
+            first.requestWhenReady()
         }
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(200.dp),
-            contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 16.dp, bottom = 48.dp),
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            gridItemsIndexed(list, key = { _, c -> c.id }) { i, c ->
-                TvChannelCard(
-                    c, epg[c.epgKey].nowAndNext(clock).first, clock, playing = c.id == playback.channel?.id,
-                    width = 200.dp,
-                    favorite = c.id in favorites,
-                    onClick = { onPlay(c) },
-                    onLongClick = { onOptions(c) },
-                    modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
-                )
+    }
+
+    Row(Modifier.fillMaxSize()) {
+        TvFilterRail("Channels", filter, list.size, mode,
+            onFilter = { vm.filter.value = it; mode = PanelMode.Channels },
+            onMode = { mode = it },
+            modifier = Modifier.width(260.dp).fillMaxHeight().padding(start = 16.dp, end = 12.dp, top = 36.dp))
+        Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = 32.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)))
+        Column(Modifier.weight(1f).fillMaxHeight().padding(top = 36.dp)) {
+            if (mode != PanelMode.Channels) {
+                TvFilterPicker(vm, mode, filter) { mode = PanelMode.Channels; focusGrid++ }
+                return@Column
+            }
+            Text(filterName(filter), fontSize = 30.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 32.dp))
+            Text("${"%,d".format(list.size)} channels  ·  OK to watch  ·  hold OK for options  ·  Left for filters",
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 32.dp, end = 32.dp, bottom = 4.dp))
+            if (list.isEmpty()) {
+                Text(if (filter == Filter.Favorites) "No favorites yet. Hold OK on a channel to add one." else "Nothing here yet.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(32.dp))
+            }
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Adaptive(190.dp),
+                contentPadding = PaddingValues(start = 32.dp, end = 40.dp, top = 16.dp, bottom = 48.dp),
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                gridItemsIndexed(list, key = { _, c -> c.id }) { i, c ->
+                    TvChannelCard(
+                        c, epg[c.epgKey].nowAndNext(clock).first, clock, playing = c.id == playback.channel?.id,
+                        width = 190.dp,
+                        favorite = c.id in favorites,
+                        onClick = { onPlay(c) },
+                        onLongClick = { onOptions(c) },
+                        modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
+                    )
+                }
             }
         }
     }
