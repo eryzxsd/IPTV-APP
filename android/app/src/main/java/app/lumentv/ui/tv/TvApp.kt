@@ -1,5 +1,8 @@
 package app.lumentv.ui.tv
 
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.padding
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -145,6 +148,9 @@ fun TvApp(vm: MainViewModel) {
             }
             if (scrim > 0f) Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = scrim)))
 
+            // Every screen but the player has the side menu; Home lays out its own room for it.
+            val withMenu = screen != TvScreen.Player
+            Box(Modifier.fillMaxSize().padding(start = if (withMenu && screen != TvScreen.Home) RAIL_WIDTH else 0.dp)) {
             when (screen) {
                 TvScreen.Home -> TvHome(vm, onPlay = play, onOpen = nav::open, onBrowse = openBrowse, onOptions = { options = it })
                 TvScreen.Player -> TvPlayer(vm, onOpen = nav::open, onExit = nav::back)
@@ -160,6 +166,10 @@ fun TvApp(vm: MainViewModel) {
                     }
                     play(c)
                 }, onOptions = { options = it })
+            }
+            }
+            if (withMenu) {
+                SideMenu(selected = screen, onOpen = nav::open, onBrowseAll = { openBrowse(BrowseTarget.All) }, modifier = Modifier.zIndex(1f))
             }
             options?.let { c -> ChannelOptions(vm, c, onPlay = play, onBrowse = openBrowse, onDismiss = { options = null }) }
         } }

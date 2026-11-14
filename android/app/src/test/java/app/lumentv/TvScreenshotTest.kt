@@ -116,6 +116,9 @@ class TvScreenshotTest {
         key(Key.DirectionLeft)
         clickText("TV guide")
         shot("tv-10-guide")
+        key(Key.DirectionLeft) // the side menu works on every screen
+        shot("tv-10b-guide-menu")
+        key(Key.DirectionRight)
         systemBack()
         rule.mainClock.advanceTimeBy(800)
         key(Key.DirectionCenter) // "Now playing" card -> player

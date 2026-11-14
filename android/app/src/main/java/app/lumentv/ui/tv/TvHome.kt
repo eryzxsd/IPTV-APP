@@ -195,16 +195,11 @@ fun TvHome(
             }
         }
 
-        SideMenu(
-            selected = TvScreen.Home,
-            onOpen = onOpen,
-            onBrowseAll = { onBrowse(BrowseTarget.All) },
-            modifier = Modifier.zIndex(1f),
-        )
     }
 }
 
-private val RAIL_WIDTH = 76.dp
+/** Width of the collapsed side menu; screens leave this much room on the left. */
+internal val RAIL_WIDTH = 76.dp
 private val BILLBOARD_HEIGHT = 286.dp
 
 /** Full-bleed art behind the banner: the live video for the playing channel, otherwise the channel's colours and logo. */
@@ -424,11 +419,14 @@ fun SideMenu(selected: TvScreen?, onOpen: (TvScreen) -> Unit, onBrowseAll: () ->
             .padding(start = 14.dp, top = 96.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        MenuItem(Icons.Rounded.Search, "Search", open, selected == TvScreen.Search) { onOpen(TvScreen.Search) }
-        MenuItem(Icons.Rounded.Home, "Home", open, selected == TvScreen.Home, Modifier.focusRequester(home)) { onOpen(TvScreen.Home) }
-        MenuItem(Icons.Rounded.CalendarViewDay, "TV guide", open, selected == TvScreen.Guide) { onOpen(TvScreen.Guide) }
-        MenuItem(Icons.Rounded.Category, "All channels", open, selected == TvScreen.Browse) { onBrowseAll() }
-        MenuItem(Icons.Rounded.Settings, "Settings", open, selected == TvScreen.Settings) { onOpen(TvScreen.Settings) }
+        // Coming into the menu lands on the current screen's item.
+        val current = selected ?: TvScreen.Home
+        fun Modifier.landing(s: TvScreen) = if (s == current) focusRequester(home) else this
+        MenuItem(Icons.Rounded.Search, "Search", open, selected == TvScreen.Search, Modifier.landing(TvScreen.Search)) { onOpen(TvScreen.Search) }
+        MenuItem(Icons.Rounded.Home, "Home", open, selected == TvScreen.Home, Modifier.landing(TvScreen.Home)) { onOpen(TvScreen.Home) }
+        MenuItem(Icons.Rounded.CalendarViewDay, "TV guide", open, selected == TvScreen.Guide, Modifier.landing(TvScreen.Guide)) { onOpen(TvScreen.Guide) }
+        MenuItem(Icons.Rounded.Category, "All channels", open, selected == TvScreen.Browse, Modifier.landing(TvScreen.Browse)) { onBrowseAll() }
+        MenuItem(Icons.Rounded.Settings, "Settings", open, selected == TvScreen.Settings, Modifier.landing(TvScreen.Settings)) { onOpen(TvScreen.Settings) }
     }
 }
 
