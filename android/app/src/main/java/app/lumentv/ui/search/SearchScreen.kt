@@ -111,7 +111,7 @@ fun SearchScreen(vm: MainViewModel, onPlay: (Channel) -> Unit, onBrowse: (String
             )
         }
 
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + app.lumentv.ui.components.LocalMiniPlayerInset.current)) {
             when {
                 query.isBlank() -> item {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {

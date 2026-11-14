@@ -1,5 +1,6 @@
 package app.lumentv.ui
 
+import app.lumentv.ui.components.LocalMiniPlayerInset
 import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.graphicsLayer
@@ -141,9 +142,14 @@ fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Un
         ) {
             // Idle Home's banner runs under the status bar (it pads its own top bar).
             val edgeToEdge = videoFullscreen || (tab == Tab.Home && !playerShown && !searching)
-            Column(Modifier.fillMaxSize().then(if (edgeToEdge) Modifier else Modifier.statusBarsPadding())) {
-                Box(Modifier.weight(1f)) {
-                    val pad = PaddingValues(bottom = 12.dp)
+            val last by vm.lastChannel.collectAsStateWithLifecycle()
+            // On other tabs, and on Home while the player is minimized.
+            val showMini = (tab != Tab.Home || (playing && minimized)) && (playback.channel ?: last) != null
+            val miniInset = if (showMini) 84.dp else 0.dp
+            // The mini player floats over the page (no band of background around it); lists leave room for it.
+            Box(Modifier.fillMaxSize().then(if (edgeToEdge) Modifier else Modifier.statusBarsPadding())) {
+                CompositionLocalProvider(LocalMiniPlayerInset provides miniInset) {
+                    val pad = PaddingValues(bottom = 12.dp + miniInset)
                     when (tab) {
                         Tab.Home -> if (searching) {
                             SearchScreen(vm, onPlay = { c -> searching = false; open(c) }, onBrowse = { g -> searching = false; browse(g) }, onClose = { searching = false })
@@ -155,9 +161,10 @@ fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Un
                         Tab.Settings -> SettingsScreen(vm, contentPadding = pad)
                     }
                 }
-                // On other tabs, and on Home while the player is minimized.
-                if (tab != Tab.Home || (playing && minimized)) {
-                    MiniPlayer(vm, onOpen = { vm.minimized.value = false; tab = Tab.Home }, onResume = open)
+                if (showMini) {
+                    Box(Modifier.align(Alignment.BottomCenter)) {
+                        MiniPlayer(vm, onOpen = { vm.minimized.value = false; tab = Tab.Home }, onResume = open)
+                    }
                 }
             }
         }
@@ -197,6 +204,7 @@ private fun MiniPlayer(vm: MainViewModel, onOpen: () -> Unit, onResume: (Channel
             shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
             tonalElevation = 3.dp,
+            shadowElevation = 8.dp,
         ) {
             Column {
                 Row(Modifier.padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {

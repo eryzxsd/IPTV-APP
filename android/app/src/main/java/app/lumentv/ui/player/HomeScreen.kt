@@ -1,5 +1,6 @@
 package app.lumentv.ui.player
 
+import app.lumentv.ui.components.LocalMiniPlayerInset
 import app.lumentv.ui.home.browseItems
 import app.lumentv.ui.home.HomeHero
 import android.app.Activity
@@ -286,7 +287,7 @@ private fun IdleHome(
         val onNow = rows.firstOrNull { it.id == "on-now" }?.channels.orEmpty().take(2)
         (forYou + onNow).distinctBy { it.id }.ifEmpty { rows.firstOrNull()?.channels.orEmpty().take(5) }
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp + LocalMiniPlayerInset.current)) {
         item(key = "hero") {
             HomeHero(picks, epg, clock, lib.favorites, onPlay = onOpen, onFavorite = { vm.toggleFavorite(it) }, onSearch = onSearch)
         }

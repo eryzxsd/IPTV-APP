@@ -32,6 +32,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lumentv.data.Channel
 import app.lumentv.ui.MainViewModel
 
+/** Space at the bottom of the screen covered by the floating mini player (lists add it to their padding). */
+val LocalMiniPlayerInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
+
 /** Opens the options for a channel (long-press on any channel). Provided by the app's navigation. */
 val LocalChannelOptions = staticCompositionLocalOf<((Channel) -> Unit)?> { null }
 
