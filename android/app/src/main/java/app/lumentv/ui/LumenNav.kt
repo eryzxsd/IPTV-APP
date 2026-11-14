@@ -1,5 +1,13 @@
 package app.lumentv.ui
 
+import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.AnimatedVisibility
 import app.lumentv.ui.player.HomeScreen
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
@@ -169,9 +177,23 @@ private fun MiniPlayer(vm: MainViewModel, onOpen: () -> Unit, onResume: (Channel
     AnimatedVisibility(channel != null, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
         val c = channel ?: return@AnimatedVisibility
         val now = epg[c.epgKey].nowAndNext(clock).first
+        val expand = { if (playback.channel == null) onResume(c) else onOpen() }
+        // Swipe up opens the full player; the card follows the finger and springs back otherwise.
+        val drag = remember { Animatable(0f) }
+        val scope = rememberCoroutineScope()
+        val threshold = with(LocalDensity.current) { 48.dp.toPx() }
         Surface(
-            onClick = { if (playback.channel == null) onResume(c) else onOpen() },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+            onClick = expand,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)
+                .graphicsLayer { translationY = drag.value }
+                .draggable(
+                    orientation = Orientation.Vertical,
+                    state = rememberDraggableState { dy -> scope.launch { drag.snapTo((drag.value + dy).coerceIn(-threshold * 2, 0f)) } },
+                    onDragStopped = { velocity ->
+                        if (drag.value < -threshold || velocity < -1500f) expand()
+                        drag.animateTo(0f)
+                    },
+                ),
             shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
             tonalElevation = 3.dp,

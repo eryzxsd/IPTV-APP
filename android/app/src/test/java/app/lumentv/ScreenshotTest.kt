@@ -132,9 +132,12 @@ class ScreenshotTest {
         rule.mainClock.advanceTimeBy(800)
         shot("5c-player-minimized")
         check(rule.activity.vm.player.state.value.channel != null) { "minimizing keeps playing" }
-        rule.onNodeWithText(rule.activity.vm.player.state.value.channel!!.name, useUnmergedTree = true).performClick() // the mini player
+        // Swipe the mini player up to open the full player again.
+        rule.onNodeWithText(rule.activity.vm.player.state.value.channel!!.name, useUnmergedTree = true)
+            .performTouchInput { swipeUp(startY = centerY, endY = centerY - 300f, durationMillis = 200) }
         rule.mainClock.advanceTimeBy(800)
         shot("5d-player-restored")
+        check(!rule.activity.vm.minimized.value) { "swiping the mini player up opens the player" }
         rule.onNodeWithContentDescription("Minimize player").performClick()
         rule.mainClock.advanceTimeBy(500)
         rule.onNodeWithContentDescription("Close player").performClick() // the mini player's ✕
