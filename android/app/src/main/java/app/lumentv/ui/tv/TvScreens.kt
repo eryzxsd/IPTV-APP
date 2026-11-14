@@ -176,6 +176,12 @@ fun TvSearch(vm: MainViewModel, onPlay: (Channel) -> Unit, onOptions: (Channel) 
     val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { query = it }
     }
+    val homeRows by vm.homeRows.collectAsStateWithLifecycle()
+    val groups by vm.groups.collectAsStateWithLifecycle()
+    val playback by vm.player.state.collectAsStateWithLifecycle()
+    // Before anything is typed: quick searches and rows of channels, so the screen isn't empty.
+    val suggestions = remember(homeRows) { ChannelSearch.suggestions(homeRows).map { it.title to it.channels } }
+    val quick = remember(groups) { groups.filter { it.first != "Other" }.sortedByDescending { it.second }.take(12).map { it.first } }
     val results by produceState(emptyList<Pair<String, List<Channel>>>(), query, all, epg) {
         delay(250)
         value = withContext(Dispatchers.Default) { ChannelSearch.search(all, epg, query).map { it.title to it.channels } }
@@ -203,12 +209,22 @@ fun TvSearch(vm: MainViewModel, onPlay: (Channel) -> Unit, onOptions: (Channel) 
         if (query.isNotBlank() && results.isEmpty()) {
             Text("No results for \"$query\"", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(48.dp))
         }
+        val blank = query.isBlank()
         LazyColumn(contentPadding = PaddingValues(top = 16.dp, bottom = 48.dp)) {
-            items(results, key = { it.first }) { (title, list) ->
-                Text("$title (${list.size})", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 48.dp))
+            if (blank && quick.isNotEmpty()) item(key = "quick") {
+                Column {
+                    Text("Quick searches", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 48.dp))
+                    LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items(quick, key = { it }) { g -> TvButton(g, { query = g }, icon = Icons.Rounded.Search) }
+                    }
+                }
+            }
+            items(if (blank) suggestions else results, key = { (if (blank) "s:" else "r:") + it.first }) { (title, list) ->
+                Text(if (blank) title else "$title (${list.size})", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 48.dp))
                 LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     items(list.take(60), key = { it.id }) { c ->
-                        TvChannelCard(c, epg[c.epgKey].nowAndNext(clock).first, clock, playing = false, onClick = { onPlay(c) }, onLongClick = { onOptions(c) })
+                        TvChannelCard(c, epg[c.epgKey].nowAndNext(clock).first, clock, playing = c.id == playback.channel?.id,
+                            onClick = { onPlay(c) }, onLongClick = { onOptions(c) })
                     }
                 }
             }

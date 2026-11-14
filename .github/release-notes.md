@@ -11,7 +11,10 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
 - **Android**: download the APK on your device and open it. Allow "Install unknown apps" for your browser or file manager when asked.
   On Android TV, sideload it with a file manager or `adb install`.
 
-## What's new in 1.10.0
+## What's new in 1.10.1
 
-- **Android TV: the side menu is on every screen** (Home, TV guide, Search, All channels and Settings), not just Home. Press **Left** to open it. It opens on the screen you're on, which is highlighted. The player stays full screen without it.
-- **Faster Home** (from 1.9.9): the Home rows are built about 28 times faster, so "Loading channels…" is much shorter on TVs and phones.
+- **Search isn't empty any more** (TV and phone). Before you type anything it shows:
+  - **Quick searches:** popular categories. Pick one to search for it.
+  - **Recently watched**, **Recommended for you** and **On now** rows, ready to play.
+  - On phones, **Browse categories** at the bottom opens a category's full list.
+- **Android TV: the side menu is on every screen** (from 1.10.0).

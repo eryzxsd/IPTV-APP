@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -79,7 +80,10 @@ fun SearchScreen(vm: MainViewModel, onPlay: (Channel) -> Unit, onBrowse: (String
         delay(200)
         value = withContext(Dispatchers.Default) { ChannelSearch.search(all, epg, query) }
     }
-    val suggestions = remember(groups) { groups.filter { it.first != "Other" }.sortedByDescending { it.second }.take(16) }
+    val categories = remember(groups) { groups.filter { it.first != "Other" }.sortedByDescending { it.second }.take(16) }
+    val homeRows by vm.homeRows.collectAsStateWithLifecycle()
+    // Before anything is typed: what you watched, picks for you and what's on now, so the screen isn't empty.
+    val suggestions = remember(homeRows) { ChannelSearch.suggestions(homeRows) }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
@@ -113,11 +117,33 @@ fun SearchScreen(vm: MainViewModel, onPlay: (Channel) -> Unit, onBrowse: (String
 
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + app.lumentv.ui.components.LocalMiniPlayerInset.current)) {
             when {
-                query.isBlank() -> item {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Text("Browse categories", style = MaterialTheme.typography.titleMedium)
-                        FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            suggestions.forEach { (g, n) -> AssistChip(onClick = { onBrowse(g) }, label = { Text("$g  ·  $n") }) }
+                query.isBlank() -> {
+                    item(key = "quick") {
+                        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                            Text("Quick searches", style = MaterialTheme.typography.titleMedium)
+                            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                categories.take(10).forEach { (g, _) ->
+                                    AssistChip(onClick = { query = g }, label = { Text(g) }, leadingIcon = { Icon(Icons.Rounded.Search, null, Modifier.size(16.dp)) })
+                                }
+                            }
+                        }
+                    }
+                    items(suggestions, key = { "s:" + it.title }) { section ->
+                        Column(Modifier.padding(top = 12.dp)) {
+                            Text(section.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
+                            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                items(section.channels, key = { it.id }) { c ->
+                                    ChannelCard(c, epg[c.epgKey].nowAndNext(clock).first, clock, active = c.id == playback.channel?.id) { keyboard?.hide(); onPlay(c) }
+                                }
+                            }
+                        }
+                    }
+                    item(key = "browse") {
+                        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                            Text("Browse categories", style = MaterialTheme.typography.titleMedium)
+                            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                categories.forEach { (g, n) -> AssistChip(onClick = { onBrowse(g) }, label = { Text("$g  ·  $n") }) }
+                            }
                         }
                     }
                 }

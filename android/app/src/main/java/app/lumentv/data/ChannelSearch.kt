@@ -14,4 +14,10 @@ object ChannelSearch {
         val inGroup = all.filter { it.id !in names && it.groups.any { g -> g.lowercase().contains(needle) } }
         return listOf(Section("Channels", byName), Section("On now", onNow), Section("Categories", inGroup)).filter { it.channels.isNotEmpty() }
     }
+
+    /** Rows to show before anything is typed: what you watched, picks for you, and what's on now (from Home). */
+    fun suggestions(homeRows: List<HomeRow>): List<Section> {
+        val titles = linkedMapOf("continue" to "Recently watched", "for-you" to "Recommended for you", "on-now" to "On now")
+        return titles.mapNotNull { (id, title) -> homeRows.firstOrNull { it.id == id }?.takeIf { it.channels.isNotEmpty() }?.let { Section(title, it.channels) } }
+    }
 }
