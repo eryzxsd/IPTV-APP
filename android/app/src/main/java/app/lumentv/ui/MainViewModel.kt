@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -192,22 +193,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .onFailure { _channelState.value = LoadState.Failed(it.message ?: "Couldn't load the playlist") }
     }
 
-    private fun loadEpg(force: Boolean) = viewModelScope.launch {
+    /** The guide load in progress: a newer one (e.g. guide regions changed) replaces it, so an older result can't overwrite it. */
+    private var epgJob: kotlinx.coroutines.Job? = null
+
+    private fun loadEpg(force: Boolean): kotlinx.coroutines.Job {
+        epgJob?.cancel()
+        return viewModelScope.launch { loadEpgNow(force) }.also { epgJob = it }
+    }
+
+    private suspend fun loadEpgNow(force: Boolean) {
         val s = settings.value
         val urls = if (s.epgEnabled) s.epgUrls else emptyList()
         if (urls.isEmpty()) {
             _epg.value = runCatching { repo.loadEpg(channels.value, urls, force, appPrefs.value.guideRefreshHours) }.getOrDefault(emptyMap())
-            return@launch
+            return
         }
         // Show the saved guide straight away; download a new one only when it's due.
         if (!force) {
             val cached = runCatching { repo.cachedGuide(urls, appPrefs.value.guideRefreshHours) }.getOrNull()
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
             if (cached != null) {
                 _epg.value = cached.data
-                if (!cached.stale) return@launch
+                if (!cached.stale) return
             }
         }
         val fresh = runCatching { repo.loadEpg(channels.value, urls, force = true, appPrefs.value.guideRefreshHours) }.getOrNull()
+        // Replaced by a newer load meanwhile (runCatching above also catches the cancellation): leave it to that one.
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
         // A failed refresh keeps the guide we already have.
         if (!fresh.isNullOrEmpty() || _epg.value.isEmpty()) _epg.value = fresh.orEmpty()
     }

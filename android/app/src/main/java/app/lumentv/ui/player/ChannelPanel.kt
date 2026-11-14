@@ -123,7 +123,6 @@ private fun Panel(vm: MainViewModel, onClose: () -> Unit) {
     val query by vm.query.collectAsStateWithLifecycle()
     val lib by vm.library.collectAsStateWithLifecycle()
     val playback by vm.player.state.collectAsStateWithLifecycle()
-    val previous by vm.previousChannel.collectAsStateWithLifecycle()
     val groups by vm.groups.collectAsStateWithLifecycle()
     val countries by vm.countries.collectAsStateWithLifecycle()
     val state = rememberLazyListState()
@@ -143,7 +142,6 @@ private fun Panel(vm: MainViewModel, onClose: () -> Unit) {
         derivedStateOf { currentIndex >= 0 && state.layoutInfo.visibleItemsInfo.none { it.index == currentIndex } }
     }
     val pick: (PanelMode) -> Unit = { mode = it; pickerQuery = "" }
-    val previousChannel = previous?.takeIf { it.id != currentId }
 
     val pickerItems = if (mode == PanelMode.Categories) groups.filter { it.first != "Other" }.sortedByDescending { it.second } else countries
     @Composable
@@ -210,9 +208,9 @@ private fun Panel(vm: MainViewModel, onClose: () -> Unit) {
                 if (wide) {
                     Row(Modifier.safeDrawingPadding()) {
                         FilterRail(
-                            filter = filter, count = list.size, previous = previousChannel, mode = mode,
+                            filter = filter, count = list.size, mode = mode,
                             onFilter = { vm.filter.value = it; backToChannels(); scope.launch { state.scrollToItem(0) } },
-                            onPick = pick, onPrevious = vm::playPrevious,
+                            onPick = pick,
                             modifier = Modifier.width(220.dp).fillMaxHeight(),
                         )
                         Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = 16.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)))
@@ -267,7 +265,6 @@ private fun Panel(vm: MainViewModel, onClose: () -> Unit) {
                                 }
                             }
                         }
-                        previousChannel?.let { PreviousCard(it, vm::playPrevious, Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp)) }
                         Spacer(Modifier.height(6.dp))
                         ChannelList(Modifier.weight(1f))
                     }
@@ -277,16 +274,14 @@ private fun Panel(vm: MainViewModel, onClose: () -> Unit) {
     }
 }
 
-/** Filters as a column (wide panel): lists, category, country, and the previous channel. */
+/** Filters as a column (wide panel): lists, category and country. */
 @Composable
 private fun FilterRail(
     filter: Filter,
     count: Int,
-    previous: Channel?,
     mode: PanelMode,
     onFilter: (Filter) -> Unit,
     onPick: (PanelMode) -> Unit,
-    onPrevious: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 10.dp, top = 14.dp, bottom = 12.dp)) {
@@ -305,10 +300,6 @@ private fun FilterRail(
             Icons.Rounded.Public, (filter as? Filter.Country)?.let { "${flag(it.code)} ${countryName(it.code)}" } ?: "Country",
             selected = mode == PanelMode.Countries || (filter is Filter.Country && mode == PanelMode.Channels), chevron = true,
         ) { onPick(PanelMode.Countries) }
-        if (previous != null) {
-            Spacer(Modifier.height(12.dp))
-            PreviousCard(previous, onPrevious)
-        }
     }
 }
 
@@ -333,26 +324,6 @@ private fun RailItem(
             Text(label, Modifier.weight(1f).padding(start = 12.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
             if (chevron) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, Modifier.size(18.dp))
-        }
-    }
-}
-
-/** "Previous" shortcut: back to the channel you watched before this one. */
-@Composable
-private fun PreviousCard(p: Channel, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            ChannelLogo(p, 32.dp)
-            Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                Text("PREVIOUS", fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp, color = Brand.Cyan)
-                Text(p.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            }
-            Icon(Icons.Rounded.History, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

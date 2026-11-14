@@ -86,6 +86,19 @@ class TvScreenshotTest {
         key(Key.DirectionLeft)
         rule.mainClock.advanceTimeBy(500)
         shot("tv-5-channel-panel")
+        key(Key.DirectionLeft) // into the filter column
+        key(Key.DirectionDown, 3) // ... Category
+        shot("tv-5b-panel-rail")
+        key(Key.DirectionCenter)
+        rule.mainClock.advanceTimeBy(500)
+        shot("tv-5c-panel-categories")
+        key(Key.DirectionDown) // the second category
+        key(Key.DirectionCenter)
+        rule.mainClock.advanceTimeBy(500)
+        shot("tv-5d-panel-filtered")
+        check(rule.activity.vm.filter.value is app.lumentv.ui.Filter.Group) { "picking a category filters the list" }
+        rule.runOnUiThread { rule.activity.vm.filter.value = app.lumentv.ui.Filter.All }
+        rule.mainClock.advanceTimeBy(300)
         key(Key.Back)
         systemBack()
         rule.mainClock.advanceTimeBy(500)

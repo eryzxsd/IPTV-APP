@@ -1,5 +1,21 @@
 package app.lumentv.ui.tv
 
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.foundation.focusGroup
+import app.lumentv.data.flag
+import app.lumentv.data.countryName
+import app.lumentv.data.Channel
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.LiveTv
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Category
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
@@ -100,6 +116,8 @@ fun TvPlayer(vm: MainViewModel, onOpen: (TvScreen) -> Unit, onExit: () -> Unit) 
 
     var overlay by remember { mutableStateOf(Overlay.Info) }
     var panel by remember { mutableStateOf(false) }
+    var panelMode by remember { mutableStateOf(PanelMode.Channels) }
+    LaunchedEffect(panel) { if (!panel) panelMode = PanelMode.Channels }
     var dialog by remember { mutableStateOf<Dialog?>(null) }
     var poke by remember { mutableIntStateOf(0) }
     val rootFocus = remember { FocusRequester() }
@@ -160,9 +178,11 @@ fun TvPlayer(vm: MainViewModel, onOpen: (TvScreen) -> Unit, onExit: () -> Unit) 
                     // Number keys type a channel number; it switches after a short pause.
                     digit != null && !panel -> { if (digits.length < 5) digits += digit; true }
                     k == Key.LastChannel -> { vm.playPrevious(); true }
-                    panel -> when (k) {
-                        Key.Back, Key.DirectionRight -> { panel = false; true }
-                        else -> if (menu) { panel = false; true } else false
+                    panel -> when {
+                        // Back leaves a category/country picker first, then closes the list.
+                        k == Key.Back -> { if (panelMode != PanelMode.Channels) panelMode = PanelMode.Channels else panel = false; true }
+                        menu -> { panel = false; true }
+                        else -> false
                     }
                     overlay == Overlay.Controls -> {
                         poke++
@@ -304,7 +324,7 @@ fun TvPlayer(vm: MainViewModel, onOpen: (TvScreen) -> Unit, onExit: () -> Unit) 
             }
         }
 
-        if (panel) ChannelPanel(vm, onClose = { panel = false })
+        if (panel) ChannelPanel(vm, panelMode, onMode = { panelMode = it }, onClose = { panel = false })
 
         // The channel number being typed, with a preview of where it goes.
         if (digits.isNotEmpty()) {
@@ -322,8 +342,14 @@ fun TvPlayer(vm: MainViewModel, onOpen: (TvScreen) -> Unit, onExit: () -> Unit) 
     PlayerDialogs(vm, dialog, onDialog = { dialog = it; poke++ }, onOpen = onOpen, onPanel = { panel = true })
 }
 
+enum class PanelMode { Channels, Categories, Countries }
+
+/**
+ * Channel list over the video: filters in a column on the left (Left/Right to move between them),
+ * category and country pickers, and the channel list with what's on now and next.
+ */
 @Composable
-private fun BoxScope.ChannelPanel(vm: MainViewModel, onClose: () -> Unit) {
+private fun BoxScope.ChannelPanel(vm: MainViewModel, mode: PanelMode, onMode: (PanelMode) -> Unit, onClose: () -> Unit) {
     val filtered by vm.filtered.collectAsStateWithLifecycle()
     val all by vm.channels.collectAsStateWithLifecycle()
     val epg by vm.epg.collectAsStateWithLifecycle()
@@ -332,47 +358,178 @@ private fun BoxScope.ChannelPanel(vm: MainViewModel, onClose: () -> Unit) {
     val lib by vm.library.collectAsStateWithLifecycle()
     val filter by vm.filter.collectAsStateWithLifecycle()
     val groups by vm.groups.collectAsStateWithLifecycle()
-    val list = filtered.ifEmpty { all }
-    val start = remember(filter) { list.indexOfFirst { it.id == playback.channel?.id }.coerceAtLeast(0) }
+    val countries by vm.countries.collectAsStateWithLifecycle()
+    val list = filtered.ifEmpty { if (filter == Filter.All) all else emptyList() }
+    val currentId = playback.channel?.id
+    val start = remember(filter, list.size) { list.indexOfFirst { it.id == currentId }.coerceAtLeast(0) }
     val state = rememberLazyListState(initialFirstVisibleItemIndex = (start - 3).coerceAtLeast(0))
-    LaunchedEffect(filter) { state.scrollToItem((start - 3).coerceAtLeast(0)) }
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(filter) { focus.requestWhenReady() }
-    val favorites = remember(lib.favorites) { lib.favorites.toHashSet() }
-    var choosing by remember { mutableStateOf(false) }
-    val choices = remember(groups) {
-        listOf<Pair<String, Filter>>("All channels" to Filter.All, "Favorites" to Filter.Favorites, "Recently watched" to Filter.Recent) +
-            groups.filter { it.first != "Other" }.sortedByDescending { it.second }.map { (g, n) -> "$g ($n)" to Filter.Group(g) }
+    val listFocus = remember { FocusRequester() }
+    var focusList by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { listFocus.requestWhenReady() }
+    // A new list (filter changed): start at the playing channel, or at the top.
+    LaunchedEffect(filter, list.firstOrNull()?.id) { state.scrollToItem((start - 3).coerceAtLeast(0)) }
+    LaunchedEffect(focusList) {
+        if (focusList > 0) {
+            state.scrollToItem((start - 3).coerceAtLeast(0))
+            listFocus.requestWhenReady()
+        }
     }
-    if (choosing) {
-        TvChoiceDialog("Show", choices.map { it.first }, choices.indexOfFirst { it.second == filter },
-            onPick = { vm.filter.value = choices[it].second; choosing = false }, onDismiss = { choosing = false })
+    // Moving into the filter column lands on the current filter, not whichever item is level with the row.
+    val railSelected = remember { FocusRequester() }
+    val favorites = remember(lib.favorites) { lib.favorites.toHashSet() }
+    var options by remember { mutableStateOf<Channel?>(null) }
+    options?.let { c ->
+        ChannelOptions(vm, c, onPlay = { vm.play(it) }, onBrowse = { b ->
+            if (b is BrowseTarget.Category) vm.filter.value = Filter.Group(b.name)
+        }, onDismiss = { options = null })
+    }
+    val setFilter: (Filter) -> Unit = { f ->
+        vm.filter.value = f
+        onMode(PanelMode.Channels)
     }
 
-    Column(
-        Modifier.align(Alignment.CenterStart).width(500.dp).fillMaxHeight()
-            .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.96f)).padding(top = 32.dp),
+    Row(
+        Modifier.align(Alignment.CenterStart).width(860.dp).fillMaxHeight()
+            .background(Brush.horizontalGradient(listOf(
+                MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.99f),
+                MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.95f),
+            ))),
     ) {
-        Text("Channels", fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 28.dp))
-        Text("${list.size} channels · OK to watch · Right to close", color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 28.dp, end = 28.dp, bottom = 10.dp))
-        TvButton(
-            choices.firstOrNull { it.second == filter }?.first?.substringBefore(" (") ?: "All channels",
-            { choosing = true },
-            icon = Icons.Rounded.FilterList,
-            modifier = Modifier.padding(start = 24.dp, bottom = 10.dp),
-        )
-        LazyColumn(state = state, contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 24.dp)) {
-            itemsIndexed(list, key = { _, c -> c.id }) { i, c ->
-                val playing = c.id == playback.channel?.id
-                TvChannelRow(
-                    c, epg[c.epgKey].nowAndNext(clock).first, clock, playing,
-                    favorite = c.id in favorites,
-                    number = i + 1,
-                    onClick = { if (playing) onClose() else vm.play(c) },
-                    modifier = if (i == start) Modifier.focusRequester(focus) else Modifier,
-                )
+        // ------------------------------------------------------------ filters
+        Column(
+            Modifier.width(270.dp).fillMaxHeight()
+                .focusProperties { onEnter = { if (!railSelected.requestFocus()) Unit } }
+                .focusGroup()
+                .padding(start = 20.dp, end = 12.dp, top = 32.dp),
+        ) {
+            Text("Channels", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Text("${"%,d".format(list.size)} · ${filterName(filter)}", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 14.dp))
+            fun Modifier.ifSelected(on: Boolean) = if (on) focusRequester(railSelected) else this
+            TvRailItem(Icons.Rounded.LiveTv, "All channels", filter == Filter.All && mode == PanelMode.Channels,
+                modifier = Modifier.ifSelected(filter == Filter.All)) { setFilter(Filter.All) }
+            TvRailItem(Icons.Rounded.Star, "Favorites", filter == Filter.Favorites && mode == PanelMode.Channels,
+                modifier = Modifier.ifSelected(filter == Filter.Favorites)) { setFilter(Filter.Favorites) }
+            TvRailItem(Icons.Rounded.History, "Recently watched", filter == Filter.Recent && mode == PanelMode.Channels,
+                modifier = Modifier.ifSelected(filter == Filter.Recent)) { setFilter(Filter.Recent) }
+            TvRailItem(Icons.Rounded.Category, (filter as? Filter.Group)?.name ?: "Category",
+                mode == PanelMode.Categories || (filter is Filter.Group && mode == PanelMode.Channels), chevron = true,
+                modifier = Modifier.ifSelected(filter is Filter.Group)) { onMode(PanelMode.Categories) }
+            TvRailItem(Icons.Rounded.Public, (filter as? Filter.Country)?.let { "${flag(it.code)} ${countryName(it.code)}" } ?: "Country",
+                mode == PanelMode.Countries || (filter is Filter.Country && mode == PanelMode.Channels), chevron = true,
+                modifier = Modifier.ifSelected(filter is Filter.Country)) { onMode(PanelMode.Countries) }
+        }
+        Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = 28.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)))
+
+        // ---------------------------------------------------- list or picker
+        Column(Modifier.weight(1f).fillMaxHeight().padding(top = 32.dp)) {
+            if (mode != PanelMode.Channels) {
+                val categories = mode == PanelMode.Categories
+                val items = if (categories) groups.filter { it.first != "Other" }.sortedByDescending { it.second } else countries
+                val selected = when (val f = filter) {
+                    is Filter.Group -> f.name.takeIf { categories }
+                    is Filter.Country -> f.code.takeIf { !categories }
+                    else -> null
+                }
+                Text(if (categories) "Categories" else "Countries", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 24.dp))
+                Text("OK to show · Back to return", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 24.dp, bottom = 10.dp))
+                val first = remember(mode) { FocusRequester() }
+                val startAt = items.indexOfFirst { it.first == selected }.coerceAtLeast(0)
+                val pickerState = rememberLazyListState(initialFirstVisibleItemIndex = (startAt - 3).coerceAtLeast(0))
+                LaunchedEffect(mode) { first.requestWhenReady() }
+                LazyColumn(state = pickerState, contentPadding = PaddingValues(start = 12.dp, end = 16.dp, bottom = 24.dp)) {
+                    itemsIndexed(items, key = { _, it -> it.first }) { i, (value, count) ->
+                        TvPickerRow(
+                            if (categories) value else "${flag(value)}  ${countryName(value)}", count, value == selected,
+                            modifier = if (i == startAt) Modifier.focusRequester(first) else Modifier,
+                        ) {
+                            vm.filter.value = if (categories) Filter.Group(value) else Filter.Country(value)
+                            onMode(PanelMode.Channels)
+                            focusList++
+                        }
+                    }
+                }
+            } else {
+                Text("OK to watch · hold OK for options · Left for filters", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 24.dp, bottom = 10.dp))
+                if (list.isEmpty()) {
+                    Text(if (filter == Filter.Favorites) "No favorites yet. Hold OK on a channel to add one." else "No channels here.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(24.dp))
+                }
+                LazyColumn(state = state, contentPadding = PaddingValues(start = 12.dp, end = 16.dp, bottom = 24.dp)) {
+                    itemsIndexed(list, key = { _, c -> c.id }) { i, c ->
+                        val playing = c.id == currentId
+                        val (now, next) = epg[c.epgKey].nowAndNext(clock)
+                        TvChannelRow(
+                            c, now, clock, playing,
+                            next = next,
+                            favorite = c.id in favorites,
+                            number = i + 1,
+                            onClick = { if (playing) onClose() else vm.play(c) },
+                            onLongClick = { options = c },
+                            modifier = if (i == start) Modifier.focusRequester(listFocus) else Modifier,
+                        )
+                    }
+                }
             }
+        }
+    }
+}
+
+private fun filterName(f: Filter) = when (f) {
+    Filter.All -> "All channels"
+    Filter.Favorites -> "Favorites"
+    Filter.Recent -> "Recently watched"
+    is Filter.Group -> f.name
+    is Filter.Country -> countryName(f.code)
+}
+
+@Composable
+private fun TvRailItem(icon: ImageVector, label: String, selected: Boolean, chevron: Boolean = false, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val focused by source.collectIsFocusedAsState()
+    Surface(
+        onClick = onClick,
+        interactionSource = source,
+        shape = RoundedCornerShape(14.dp),
+        color = when {
+            focused -> TvFocus.fill
+            selected -> MaterialTheme.colorScheme.primaryContainer
+            else -> Color.Transparent
+        },
+        contentColor = Color.White,
+        border = if (focused) BorderStroke(2.dp, TvFocus.outline) else null,
+        modifier = modifier.fillMaxWidth().padding(vertical = 3.dp),
+    ) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, Modifier.size(22.dp), tint = if (icon == Icons.Rounded.Star && !focused) Color(0xFFFFC53D) else Color.White)
+            Text(label, Modifier.weight(1f).padding(start = 14.dp), fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Normal)
+            if (chevron) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, Modifier.size(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun TvPickerRow(label: String, count: Int, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val focused by source.collectIsFocusedAsState()
+    Surface(
+        onClick = onClick,
+        interactionSource = source,
+        shape = RoundedCornerShape(12.dp),
+        color = when {
+            focused -> TvFocus.fill
+            selected -> MaterialTheme.colorScheme.primaryContainer
+            else -> Color.Transparent
+        },
+        contentColor = Color.White,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, Modifier.weight(1f), fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+            Text("%,d".format(count), fontSize = 15.sp, color = if (focused) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

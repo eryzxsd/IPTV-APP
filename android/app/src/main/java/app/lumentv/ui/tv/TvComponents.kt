@@ -241,6 +241,7 @@ fun TvChannelRow(
     onFocused: (() -> Unit)? = null,
     number: Int? = null,
     onLongClick: (() -> Unit)? = null,
+    next: Programme? = null,
 ) {
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
@@ -284,7 +285,23 @@ fun TvChannelRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (now != null) GradientProgress(now.progress(clock), Modifier.padding(top = 6.dp).width(180.dp), height = 3.dp)
+                if (now != null) {
+                    Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        GradientProgress(now.progress(clock), Modifier.width(160.dp), height = 3.dp)
+                        Text("  ${app.lumentv.ui.components.fmtDuration(now.stop - clock)} left", fontSize = 12.sp,
+                            color = if (focused) Color.White.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    }
+                    if (next != null) {
+                        Text(
+                            "Next ${app.lumentv.ui.components.fmtTime(next.start)} · ${next.title}",
+                            fontSize = 13.sp,
+                            color = if (focused) Color.White.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 3.dp),
+                        )
+                    }
+                }
             }
             if (playing) {
                 Text(
