@@ -54,6 +54,13 @@ class TvNav(private val stack: MutableList<TvScreen>) {
         stack.add(s)
     }
     fun back() { if (canGoBack) stack.removeAt(stack.lastIndex) }
+
+    /** Side-menu screens are top level: Back from them goes straight to Home (and Back twice there exits). */
+    fun openTop(s: TvScreen) {
+        stack.clear()
+        stack.add(TvScreen.Home)
+        if (s != TvScreen.Home) stack.add(s)
+    }
 }
 
 /**
@@ -162,7 +169,12 @@ fun TvApp(vm: MainViewModel) {
             }
             }
             if (withMenu) {
-                SideMenu(selected = screen, onOpen = nav::open, onBrowseAll = { openBrowse(BrowseTarget.All) }, modifier = Modifier.zIndex(1f))
+                SideMenu(
+                    selected = screen,
+                    onOpen = nav::openTop,
+                    onBrowseAll = { browse = BrowseTarget.All; nav.openTop(TvScreen.Browse) },
+                    modifier = Modifier.zIndex(1f),
+                )
             }
             options?.let { c -> ChannelOptions(vm, c, onPlay = play, onBrowse = openBrowse, onDismiss = { options = null }) }
         } }

@@ -55,6 +55,13 @@ class ScreenshotTest {
         rule.mainClock.advanceTimeBy(1_000)
     }
 
+    /** Opens a bottom-bar tab; the full player hides the bar, so minimize it first (as a person would). */
+    private fun tab(name: String) {
+        rule.runOnUiThread { if (rule.activity.vm.player.state.value.channel != null) rule.activity.vm.minimized.value = true }
+        rule.mainClock.advanceTimeBy(500)
+        rule.onAllNodesWithText(name).onFirst().performClick()
+    }
+
     /** Taps the first on-screen node with this exact text (lazy lists keep some off-screen nodes around). */
     private fun clickVisible(text: String) {
         val nodes = rule.onAllNodesWithText(text)
@@ -88,7 +95,7 @@ class ScreenshotTest {
         rule.onRoot().performTouchInput { swipeDown(); swipeDown() }
         rule.mainClock.advanceTimeBy(500)
         shot("0-home")
-        rule.onAllNodesWithText("Channels").onFirst().performClick()
+        tab("Channels")
         rule.mainClock.advanceTimeBy(1_000)
         shot("1-channels")
         rule.onAllNodesWithText(rule.activity.vm.filtered.value.first().name).onFirst().performTouchInput { longClick() }
@@ -103,11 +110,11 @@ class ScreenshotTest {
         rule.activity.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.mainClock.advanceTimeBy(1_000)
 
-        rule.onAllNodesWithText("Guide").onFirst().performClick()
+        tab("Guide")
         rule.mainClock.advanceTimeBy(1_000)
         shot("3-guide")
 
-        rule.onAllNodesWithText("Settings").onFirst().performClick()
+        tab("Settings")
         rule.mainClock.advanceTimeBy(1_000)
         shot("4-settings")
         rule.onAllNodesWithText("TV GUIDE").onFirst().performScrollTo()
@@ -118,7 +125,7 @@ class ScreenshotTest {
         shot("4c-settings-data")
 
         // Open a channel that has guide data.
-        rule.onAllNodesWithText("Channels").onFirst().performClick()
+        tab("Channels")
         val vm = rule.activity.vm
         val ch = vm.channels.value.first { !vm.epg.value[it.epgKey].isNullOrEmpty() && it.name.contains("News") }
         // Favorite it and open it from the Favorites filter (the only row there).
@@ -181,7 +188,7 @@ class ScreenshotTest {
         openSheet("Subtitles", "7-subtitles")
         openSheet("Audio track", "8-audio")
         openSheet("More options", "9-more")
-        rule.onAllNodesWithText("Channels").onFirst().performClick()
+        tab("Channels")
         rule.mainClock.advanceTimeBy(1_000)
         shot("6-favorites-miniplayer")
     }
@@ -234,6 +241,9 @@ class ScreenshotTest {
 
     @Test fun guideFailuresAndUnsavedBar() {
         waitForData()
+        // The full player hides the bottom bar: minimize it to reach the other tabs.
+        rule.runOnUiThread { rule.activity.vm.minimized.value = true }
+        rule.mainClock.advanceTimeBy(500)
         val vm = rule.activity.vm
         // A guide file that doesn't exist, so it fails and shows the Retry card.
         val bad = "https://epgshare01.online/epgshare01/epg_ripper_DOES_NOT_EXIST.xml.gz"
@@ -242,10 +252,10 @@ class ScreenshotTest {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
             vm.epgFailures.value.isNotEmpty() && vm.epgState.value !is app.lumentv.data.LoadState.Loading
         }
-        rule.onAllNodesWithText("Guide").onFirst().performClick()
+        tab("Guide")
         rule.mainClock.advanceTimeBy(1_000)
         shot("14-guide-failure")
-        rule.onAllNodesWithText("Settings").onFirst().performClick()
+        tab("Settings")
         rule.mainClock.advanceTimeBy(1_000)
         // Toggle a guide region: the unsaved-changes bar must show without scrolling.
         rule.onAllNodesWithText("Japan 1").onFirst().performScrollTo().performClick()
@@ -255,8 +265,11 @@ class ScreenshotTest {
 
     @Test fun clockAndPlaybackSettings() {
         waitForData()
+        // The full player hides the bottom bar: minimize it to reach the other tabs.
+        rule.runOnUiThread { rule.activity.vm.minimized.value = true }
+        rule.mainClock.advanceTimeBy(500)
         val vm = rule.activity.vm
-        rule.onAllNodesWithText("Settings").onFirst().performClick()
+        tab("Settings")
         rule.mainClock.advanceTimeBy(1_000)
         shot("16-settings-playback")
         rule.activity.runOnUiThread { vm.saveApp(vm.appPrefs.value.copy(clock = app.lumentv.data.ClockMode.Always)) }

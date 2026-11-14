@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarViewDay
@@ -138,17 +139,25 @@ fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Un
                 }
             },
             // Hidden while watching fullscreen and while searching (more room for results and the keyboard).
-            layoutType = if (videoFullscreen || (tab == Tab.Home && searching)) NavigationSuiteType.None else adaptive,
+            // Hidden in the full player (minimize it to get the bar back) and while searching.
+            layoutType = if (videoFullscreen || playerShown || (tab == Tab.Home && searching)) NavigationSuiteType.None else adaptive,
             containerColor = MaterialTheme.colorScheme.background,
         ) {
             // Idle Home's banner runs under the status bar (it pads its own top bar).
             val edgeToEdge = videoFullscreen || (tab == Tab.Home && !playerShown && !searching)
             val last by vm.lastChannel.collectAsStateWithLifecycle()
             // On other tabs, and on Home while the player is minimized.
-            val showMini = (tab != Tab.Home || (playing && minimized)) && (playback.channel ?: last) != null
+            // Not over Search: it has its own rows and needs the room for the keyboard.
+            val showMini = (tab != Tab.Home || (playing && minimized)) && !(tab == Tab.Home && searching) && (playback.channel ?: last) != null
             val miniInset = if (showMini) 84.dp else 0.dp
             // The mini player floats over the page (no band of background around it); lists leave room for it.
-            Box(Modifier.fillMaxSize().then(if (edgeToEdge) Modifier else Modifier.statusBarsPadding())) {
+            // Without the bottom bar (player, search) keep clear of the system navigation bar.
+            val noBar = !videoFullscreen && (playerShown || (tab == Tab.Home && searching))
+            Box(
+                Modifier.fillMaxSize()
+                    .then(if (edgeToEdge) Modifier else Modifier.statusBarsPadding())
+                    .then(if (noBar) Modifier.navigationBarsPadding() else Modifier),
+            ) {
                 CompositionLocalProvider(LocalMiniPlayerInset provides miniInset) {
                     val pad = PaddingValues(bottom = 12.dp + miniInset)
                     when (tab) {

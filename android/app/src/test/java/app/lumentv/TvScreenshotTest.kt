@@ -138,5 +138,15 @@ class TvScreenshotTest {
         key(Key.Back) // Back on the player closes it
         rule.mainClock.advanceTimeBy(1_000)
         shot("tv-14-after-back")
+
+        // Side-menu screens are top level: Guide -> Search, then Back goes straight to Home.
+        key(Key.DirectionLeft)
+        clickText("TV guide")
+        key(Key.DirectionLeft)
+        clickText("Search")
+        systemBack()
+        rule.mainClock.advanceTimeBy(800)
+        check(rule.onAllNodesWithText("Recommended for you").fetchSemanticsNodes().isNotEmpty()) { "Back from a menu screen goes to Home" }
+        shot("tv-15-back-to-home")
     }
 }
