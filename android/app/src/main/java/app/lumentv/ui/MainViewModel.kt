@@ -154,7 +154,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             combine(channels, settings) { ch, s -> ch to s }.collect { (ch, s) ->
                 val urls = if (s.epgEnabled) s.epgUrls else emptyList()
-                val key = urls to ch.size
+                // Not keyed on the channel count: a background playlist refresh shouldn't reload the guide.
+                val key = urls to 0
                 if (ch.isNotEmpty() && key != loadedEpg) {
                     loadedEpg = key
                     loadEpg(force = false)
@@ -165,6 +166,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun loadChannels(urls: List<String>, force: Boolean) {
         loadedPlaylists = urls
+        // Show the saved list straight away, whatever its age; refresh an old one in the background.
+        if (!force) {
+            val cached = runCatching { repo.cachedChannels(urls) }.getOrNull()
+            if (cached != null) {
+                val (list, stale) = cached
+                _channels.value = list
+                _channelState.value = LoadState.Done()
+                restoreLast(list)
+                if (stale) viewModelScope.launch {
+                    runCatching { repo.loadChannels(urls, force = true) }.onSuccess { fresh ->
+                        if (loadedPlaylists == urls && fresh.isNotEmpty()) _channels.value = fresh
+                    }
+                }
+                return
+            }
+        }
         _channelState.value = LoadState.Loading("Loading channels…")
         runCatching { repo.loadChannels(urls, force) }
             .onSuccess {
@@ -178,7 +195,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadEpg(force: Boolean) = viewModelScope.launch {
         val s = settings.value
         val urls = if (s.epgEnabled) s.epgUrls else emptyList()
-        _epg.value = runCatching { repo.loadEpg(channels.value, urls, force, appPrefs.value.guideRefreshHours) }.getOrDefault(emptyMap())
+        if (urls.isEmpty()) {
+            _epg.value = runCatching { repo.loadEpg(channels.value, urls, force, appPrefs.value.guideRefreshHours) }.getOrDefault(emptyMap())
+            return@launch
+        }
+        // Show the saved guide straight away; download a new one only when it's due.
+        if (!force) {
+            val cached = runCatching { repo.cachedGuide(urls, appPrefs.value.guideRefreshHours) }.getOrNull()
+            if (cached != null) {
+                _epg.value = cached.data
+                if (!cached.stale) return@launch
+            }
+        }
+        val fresh = runCatching { repo.loadEpg(channels.value, urls, force = true, appPrefs.value.guideRefreshHours) }.getOrNull()
+        // A failed refresh keeps the guide we already have.
+        if (!fresh.isNullOrEmpty() || _epg.value.isEmpty()) _epg.value = fresh.orEmpty()
     }
 
     private var restored = false

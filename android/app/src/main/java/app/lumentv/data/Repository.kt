@@ -11,10 +11,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.decodeFromStream
-import kotlinx.serialization.json.encodeToStream
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.BufferedInputStream
@@ -26,8 +22,16 @@ import java.util.zip.GZIPInputStream
 
 /** Downloads, parses and caches playlists and guide data. */
 class Repository(context: Context, private val http: OkHttpClient) {
-    private val cacheDir = File(context.cacheDir, "lumen").apply { mkdirs() }
-    private val json = Json { ignoreUnknownKeys = true }
+    /**
+     * App storage, not the system cache: Android clears the cache when space runs low (often on TVs),
+     * which made every start download the whole playlist again.
+     */
+    private val cacheDir = File(context.filesDir, "lumen").apply { mkdirs() }
+
+    init {
+        // The old JSON cache files (before 1.9.3) are no longer used.
+        File(context.cacheDir, "lumen").listFiles()?.filter { it.name.endsWith(".json") }?.forEach { it.delete() }
+    }
 
     private val _epgState = MutableStateFlow<LoadState>(LoadState.Idle)
     val epgState: StateFlow<LoadState> = _epgState
@@ -35,12 +39,24 @@ class Repository(context: Context, private val http: OkHttpClient) {
     /** Guide files that couldn't be downloaded (shown with a Retry button). */
     val epgFailures: StateFlow<List<EpgFailure>> = _epgFailures
 
-    @Serializable
-    private class Cached<T>(val key: String, val time: Long, val data: T)
+
+    private fun playlistKey(urls: List<String>) = "v1|" + urls.joinToString("|")
+    private val playlistFile get() = File(cacheDir, "playlist.bin")
+    private val guideFile get() = File(cacheDir, "guide.bin")
+
+    /**
+     * The saved channel list, whatever its age, so the app can show it straight away.
+     * `stale` says it's due a refresh (do that in the background).
+     */
+    suspend fun cachedChannels(urls: List<String>): Pair<List<Channel>, Boolean>? = withContext(Dispatchers.IO) {
+        val (header, list) = CacheCodec.readChannels(playlistFile, playlistKey(urls)) ?: return@withContext null
+        if (list.isEmpty()) return@withContext null
+        list to (System.currentTimeMillis() - header.time > PLAYLIST_TTL)
+    }
 
     suspend fun loadChannels(urls: List<String>, force: Boolean): List<Channel> = withContext(Dispatchers.IO) {
-        val key = "v1|" + urls.joinToString("|")
-        if (!force) readCache<List<Channel>>("playlist.json", key, PLAYLIST_TTL)?.let { return@withContext it }
+        val key = playlistKey(urls)
+        if (!force) cachedChannels(urls)?.let { (list, stale) -> if (!stale) return@withContext list }
         val errors = mutableListOf<String>()
         val lists = urls.map { url ->
             async {
@@ -52,7 +68,7 @@ class Repository(context: Context, private val http: OkHttpClient) {
         val seen = HashSet<String>()
         val all = lists.flatten().filter { seen.add("${it.name}|${it.url}") }
         if (all.isEmpty()) throw IOException(errors.joinToString("\n").ifEmpty { "The playlist is empty" })
-        writeCache("playlist.json", key, all)
+        CacheCodec.writeChannels(playlistFile, key, all)
         all
     }
 
@@ -60,10 +76,21 @@ class Repository(context: Context, private val http: OkHttpClient) {
     private val fileResults = java.util.concurrent.ConcurrentHashMap<String, XmltvParser.FileResult>()
     private var resultsKey: String? = null
 
-    @Serializable
-    private class EpgCache(val data: Map<String, List<Programme>>, val failures: List<EpgFailure>)
+    /** Depends only on the guide files chosen, so a refreshed playlist doesn't throw the guide away. */
+    private fun epgKey(urls: List<String>) = "v3|" + urls.joinToString("|")
 
-    private fun epgKey(channels: List<Channel>, urls: List<String>) = "v2|" + urls.joinToString("|") + "|" + channels.size
+    class CachedGuide(val data: EpgData, val failures: List<EpgFailure>, val stale: Boolean)
+
+    /** The saved guide (up to a day and a half old, while it still has today's shows), to show straight away. */
+    suspend fun cachedGuide(urls: List<String>, ttlHours: Int): CachedGuide? = withContext(Dispatchers.IO) {
+        if (urls.isEmpty()) return@withContext null
+        val g = CacheCodec.readGuide(guideFile, epgKey(urls)) ?: return@withContext null
+        val age = System.currentTimeMillis() - g.header.time
+        if (age > 36 * HOUR || g.data.isEmpty()) return@withContext null
+        _epgFailures.value = g.failures
+        _epgState.value = LoadState.Done()
+        CachedGuide(g.data, g.failures, stale = age > ttlHours * HOUR)
+    }
 
     suspend fun loadEpg(channels: List<Channel>, urls: List<String>, force: Boolean, ttlHours: Int = 4): EpgData = withContext(Dispatchers.IO) {
         if (urls.isEmpty() || channels.isEmpty()) {
@@ -71,12 +98,8 @@ class Repository(context: Context, private val http: OkHttpClient) {
             _epgFailures.value = emptyList()
             return@withContext emptyMap()
         }
-        val key = epgKey(channels, urls)
-        if (!force) readCache<EpgCache>("epg.json", key, ttlHours * HOUR)?.let {
-            _epgFailures.value = it.failures
-            _epgState.value = LoadState.Done()
-            return@withContext it.data
-        }
+        val key = epgKey(urls)
+        if (!force) cachedGuide(urls, ttlHours)?.let { if (!it.stale) return@withContext it.data }
         fileResults.clear()
         resultsKey = key
         download(channels, urls, urls, base = null, key = key, label = "Guide")
@@ -86,7 +109,7 @@ class Repository(context: Context, private val http: OkHttpClient) {
     suspend fun retryFailedEpg(channels: List<Channel>, urls: List<String>, current: EpgData): EpgData = withContext(Dispatchers.IO) {
         val failed = _epgFailures.value.map { it.url }.filter { it in urls }
         if (failed.isEmpty() || channels.isEmpty()) return@withContext current
-        val key = epgKey(channels, urls)
+        val key = epgKey(urls)
         // Same session: proper merge from parsed results. After a restart: fill in what's missing.
         val haveAll = resultsKey == key && urls.filter { it !in failed }.all { fileResults.containsKey(it) }
         if (!haveAll) {
@@ -138,7 +161,7 @@ class Repository(context: Context, private val http: OkHttpClient) {
         _epgFailures.value = failed
         _epgState.value = if (data.isEmpty() && failed.isNotEmpty()) LoadState.Failed(failed.joinToString("\n") { "${it.name}: ${it.reason}" })
         else LoadState.Done()
-        if (data.isNotEmpty()) writeCache("epg.json", key, EpgCache(data, failed))
+        if (data.isNotEmpty()) CacheCodec.writeGuide(guideFile, key, data, failed)
         data
     }
 
@@ -201,21 +224,6 @@ class Repository(context: Context, private val http: OkHttpClient) {
         val gz = b.read() == 0x1f && b.read() == 0x8b
         b.reset()
         return if (gz) BufferedInputStream(GZIPInputStream(b, 65536), 65536) else b
-    }
-
-    private inline fun <reified T> readCache(name: String, key: String, ttl: Long): T? = runCatching {
-        val f = File(cacheDir, name)
-        if (!f.exists() || System.currentTimeMillis() - f.lastModified() > ttl) return null
-        val c = f.inputStream().buffered().use { json.decodeFromStream<Cached<T>>(it) }
-        if (c.key == key) c.data else null
-    }.getOrNull()
-
-    private inline fun <reified T> writeCache(name: String, key: String, data: T) {
-        runCatching {
-            val tmp = File(cacheDir, "$name.tmp")
-            tmp.outputStream().buffered().use { json.encodeToStream(Cached(key, System.currentTimeMillis(), data), it) }
-            tmp.renameTo(File(cacheDir, name))
-        }
     }
 
     private class CountingStream(private val inner: InputStream, private val onRead: (Long) -> Unit) : InputStream() {
