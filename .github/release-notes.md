@@ -11,12 +11,10 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
 - **Android**: download the APK on your device and open it. Allow "Install unknown apps" for your browser or file manager when asked.
   On Android TV, sideload it with a file manager or `adb install`.
 
-## What's new in 1.9.3
+## What's new in 1.9.4
 
-- **Much faster start, especially on Android TV.** "Loading channels…" no longer makes you wait every time you open the app.
-  - The channel list you already have shows straight away. When it's due a refresh (every 6 hours), the new one downloads in the background instead of making you wait.
-  - The TV guide works the same way: the saved guide shows at once and refreshes in the background when it's due. If a refresh fails, you keep the guide you have.
-  - Saved channels and guide data now use a compact format that reads several times faster than before, which helps most on low-end and 32-bit TVs.
-  - They're kept in app storage instead of the system cache, so Android no longer deletes them when storage runs low, which forced a full download.
-  - Updating the playlist no longer throws away the saved TV guide.
-- The first start after installing this update still downloads everything once.
+- **Minimize the player (phones and tablets).** The ⌄ button in the top-left of the player, or Back on Home, minimizes it instead of stopping it.
+  - The channel keeps playing in the **mini player** at the bottom of the screen, and Home shows its normal page with the banner and recommendations.
+  - Tap the mini player to open the full player again.
+  - Tap the **✕** on the mini player to stop playback completely. It works the same on Channels, Guide and Settings.
+- **Faster start** (from 1.9.3): saved channels and the TV guide show straight away and refresh in the background.

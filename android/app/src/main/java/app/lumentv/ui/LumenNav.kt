@@ -80,11 +80,16 @@ fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Un
     val playback by vm.player.state.collectAsStateWithLifecycle()
     val userFullscreen by vm.fullscreen.collectAsStateWithLifecycle()
     val playing = playback.channel != null
-    LaunchedEffect(tab, playing) { onPlayerVisible(tab == Tab.Home && playing) }
+    val minimized by vm.minimized.collectAsStateWithLifecycle()
+    val playerShown = tab == Tab.Home && playing && !minimized
+    LaunchedEffect(playerShown) { onPlayerVisible(playerShown) }
+    // Stopped (the mini player's ✕, or elsewhere): next time a channel opens in the full player.
+    LaunchedEffect(playing) { if (!playing) vm.minimized.value = false }
 
-    // Picking a channel anywhere plays it on Home.
+    // Picking a channel anywhere plays it on Home, in the full player.
     val open: (Channel) -> Unit = { c ->
         if (vm.player.state.value.channel?.id != c.id || vm.player.state.value.status == PlaybackState.Status.Error) vm.play(c)
+        vm.minimized.value = false
         tab = Tab.Home
     }
     BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
@@ -111,7 +116,7 @@ fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Un
 
     val config = LocalConfiguration.current
     val phoneLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE && config.smallestScreenWidthDp < 600
-    val videoFullscreen = tab == Tab.Home && playing && (inPip || userFullscreen || phoneLandscape)
+    val videoFullscreen = playerShown && (inPip || userFullscreen || phoneLandscape)
     val adaptive = NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(currentWindowAdaptiveInfo())
 
     CompositionLocalProvider(LocalChannelOptions provides { c: Channel -> options = c }) {
@@ -127,7 +132,7 @@ fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Un
             containerColor = MaterialTheme.colorScheme.background,
         ) {
             // Idle Home's banner runs under the status bar (it pads its own top bar).
-            val edgeToEdge = videoFullscreen || (tab == Tab.Home && !playing && !searching)
+            val edgeToEdge = videoFullscreen || (tab == Tab.Home && !playerShown && !searching)
             Column(Modifier.fillMaxSize().then(if (edgeToEdge) Modifier else Modifier.statusBarsPadding())) {
                 Box(Modifier.weight(1f)) {
                     val pad = PaddingValues(bottom = 12.dp)
@@ -142,7 +147,10 @@ fun LumenNav(vm: MainViewModel, inPip: Boolean, onPlayerVisible: (Boolean) -> Un
                         Tab.Settings -> SettingsScreen(vm, contentPadding = pad)
                     }
                 }
-                if (tab != Tab.Home) MiniPlayer(vm, onOpen = { tab = Tab.Home }, onResume = open)
+                // On other tabs, and on Home while the player is minimized.
+                if (tab != Tab.Home || (playing && minimized)) {
+                    MiniPlayer(vm, onOpen = { vm.minimized.value = false; tab = Tab.Home }, onResume = open)
+                }
             }
         }
     }
@@ -197,7 +205,7 @@ private fun MiniPlayer(vm: MainViewModel, onOpen: () -> Unit, onResume: (Channel
                         else -> IconButton(onClick = { onResume(c) }) { Icon(Icons.Rounded.PlayArrow, "Play") }
                     }
                     if (playback.channel != null) {
-                        IconButton(onClick = vm.player::stop) { Icon(Icons.Rounded.Close, "Stop") }
+                        IconButton(onClick = vm.player::stop) { Icon(Icons.Rounded.Close, "Close player") }
                     } else Spacer(Modifier.width(4.dp))
                 }
                 if (now != null && playback.channel != null) GradientProgress(now.progress(clock), Modifier.fillMaxWidth(), height = 2.dp)

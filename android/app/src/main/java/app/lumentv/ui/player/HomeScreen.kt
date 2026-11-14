@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarOutline
@@ -148,7 +149,8 @@ fun HomeScreen(vm: MainViewModel, inPip: Boolean, onOpen: (Channel) -> Unit, onB
     val config = LocalConfiguration.current
     val landscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
     val large = config.smallestScreenWidthDp >= 600 // tablets and TVs: landscape is normal, not "fullscreen"
-    val fullscreen = channel != null && (inPip || userFullscreen || (landscape && !large))
+    val minimized by vm.minimized.collectAsStateWithLifecycle()
+    val fullscreen = channel != null && !minimized && (inPip || userFullscreen || (landscape && !large))
 
     // Immersive mode while the video fills the screen.
     val view = LocalView.current
@@ -180,10 +182,10 @@ fun HomeScreen(vm: MainViewModel, inPip: Boolean, onOpen: (Channel) -> Unit, onB
         }
     }
     BackHandler(enabled = fullscreen && !inPip) { toggleFullscreen() }
-    // Back on Home closes the player and returns to the Home you get when the app opens.
-    BackHandler(enabled = channel != null && !fullscreen && !inPip) { vm.player.stop() }
+    // Back on Home minimizes the player: it keeps playing in the mini player and Home shows its normal page.
+    BackHandler(enabled = channel != null && !minimized && !fullscreen && !inPip) { vm.minimized.value = true }
 
-    if (channel == null) {
+    if (channel == null || minimized) {
         IdleHome(vm, rows, epg, clock, onOpen, categories, lib.favorites.size, onBrowse, onSearch)
         return
     }
@@ -415,8 +417,8 @@ private fun BoxScope.VideoBox(
                 if (onBack != null) {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Exit fullscreen", tint = Color.White) }
                 } else {
-                    // Close the player and go back to the regular Home.
-                    IconButton(onClick = { vm.player.stop() }) { Icon(Icons.Rounded.Close, "Close player", tint = Color.White) }
+                    // Minimize to the mini player (keeps playing) and go back to the regular Home.
+                    IconButton(onClick = { vm.minimized.value = true }) { Icon(Icons.Rounded.KeyboardArrowDown, "Minimize player", tint = Color.White) }
                 }
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

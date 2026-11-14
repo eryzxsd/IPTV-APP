@@ -234,6 +234,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _epg.value = runCatching { repo.retryFailedEpg(channels.value, urls, _epg.value) }.getOrDefault(_epg.value)
     }
 
+    /** Phone Home: the player is minimized to the mini player (still playing) and Home shows its normal page. */
+    val minimized = MutableStateFlow(false)
+
     /** The channel before the current one, for the remote's "last channel" button. */
     val previousChannel = MutableStateFlow<Channel?>(null)
 

@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -127,9 +128,19 @@ class ScreenshotTest {
         rule.onAllNodesWithText(ch.name).onFirst().performClick() // plays it on Home
         rule.mainClock.advanceTimeBy(2_000)
         shot("5-home-player")
-        rule.onNodeWithContentDescription("Close player").performClick()
+        rule.onNodeWithContentDescription("Minimize player").performClick()
         rule.mainClock.advanceTimeBy(800)
-        shot("5c-player-closed")
+        shot("5c-player-minimized")
+        check(rule.activity.vm.player.state.value.channel != null) { "minimizing keeps playing" }
+        rule.onNodeWithText(rule.activity.vm.player.state.value.channel!!.name, useUnmergedTree = true).performClick() // the mini player
+        rule.mainClock.advanceTimeBy(800)
+        shot("5d-player-restored")
+        rule.onNodeWithContentDescription("Minimize player").performClick()
+        rule.mainClock.advanceTimeBy(500)
+        rule.onNodeWithContentDescription("Close player").performClick() // the mini player's ✕
+        rule.mainClock.advanceTimeBy(800)
+        shot("5e-mini-closed")
+        check(rule.activity.vm.player.state.value.channel == null) { "the mini player's close stops playback" }
         rule.runOnUiThread { rule.activity.vm.play(rule.activity.vm.lastChannel.value!!) }
         rule.mainClock.advanceTimeBy(1_000)
         rule.onRoot().performTouchInput { swipeUp(startY = bottom * 0.8f, endY = bottom * 0.3f) }
