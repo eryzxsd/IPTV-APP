@@ -11,13 +11,7 @@ A modern IPTV player. It loads the [iptv-org](https://github.com/iptv-org/iptv) 
 - **Android**: download the APK on your device and open it. Allow "Install unknown apps" for your browser or file manager when asked.
   On Android TV, sideload it with a file manager or `adb install`.
 
-## What's new in 1.9.8
+## What's new in 1.9.9
 
-- **Android TV: a redesigned channel list** (press Left, Guide or Menu while watching), matching the phone version.
-  - **A filter column** on the left: All channels, Favorites, Recently watched, Category and Country. Press **Left** to go to it and **Right** to come back. It opens on the filter you're using.
-  - **Category and Country pickers** with channel counts. **Back** returns to the list, and Back again closes it.
-  - Rows show **time left** for the current show and **what's on next**.
-  - **Hold OK** on a channel for options: favorite, more from its category.
-- **Phones and tablets:** the previous-channel card is gone from the channel list. Use **Recently watched** instead. The **Previous channel** item in the player's More menu stays.
-- **Fixed:** changing the guide regions while the guide was still loading could show the wrong result. The newer load now always wins.
-- Also includes the redesigned phone channel browser from 1.9.7.
+- **Home appears much faster, especially on Android TV.** Building the Home rows (recommendations, on now, categories) was the slow part of "Loading channels…" once you had a watch history. It's now about 28 times faster, with exactly the same rows as before. On low-end and 32-bit TVs this was several seconds at every start, and again whenever the guide or your history updated.
+- Also includes the redesigned TV channel list from 1.9.8.

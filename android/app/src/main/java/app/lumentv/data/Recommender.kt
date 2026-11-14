@@ -12,6 +12,7 @@ object Recommender {
     private const val ROW_SIZE = 20
     private val STARTER_GROUPS = mapOf("News" to 1.0, "Movies" to 0.8, "Entertainment" to 0.7, "Sports" to 0.7, "Music" to 0.5, "Kids" to 0.4)
     private val TRAILING_NUMBER = Regex("""\s*\d+$""")
+    private val NON_ALNUM = Regex("[^a-z0-9]+")
 
     data class Profile(val groups: Map<String, Double>, val countries: Map<String, Double>) {
         val isEmpty get() = groups.isEmpty() && countries.isEmpty()
@@ -32,23 +33,32 @@ object Recommender {
     }
 
     /** Collapses numbered feeds of the same channel ("ABC News Live 3" -> "abc news live"). */
-    fun family(c: Channel) = c.name.lowercase().replace(TRAILING_NUMBER, "").replace(Regex("[^a-z0-9]+"), " ").trim()
+    fun family(c: Channel) = c.name.lowercase().replace(TRAILING_NUMBER, "").replace(NON_ALNUM, " ").trim()
 
     /** Regional or numbered versions of one channel ("cnn" / "cnn international latin america"). */
-    fun sameFamily(a: String, b: String): Boolean {
-        if (a == b) return true
-        val wa = a.split(' ')
-        val wb = b.split(' ')
-        val common = wa.zip(wb).takeWhile { (x, y) -> x == y }.size
-        val shorter = minOf(wa.size, wb.size)
-        // "cnn" / "cnn international"; or regional siblings like "cnn international latin america" /
-        // "cnn international north america" (2+ shared leading words covering half the shorter name).
-        return (common == shorter && a.length >= 2) || (common >= 2 && common * 2 >= shorter)
+    fun sameFamily(a: String, b: String): Boolean = sameFamily(Family(a), Family(b))
+
+    /** A family name split into words once (comparing families is the hot loop when building Home). */
+    private class Family(val name: String) {
+        val words: List<String> = name.split(' ')
     }
 
-    fun score(c: Channel, p: Profile, hasGuideNow: Boolean, playedOk: Boolean): Double {
-        val maxG = p.groups.values.maxOrNull() ?: 1.0
-        val maxC = p.countries.values.maxOrNull() ?: 1.0
+    private fun sameFamily(a: Family, b: Family): Boolean {
+        if (a.name == b.name) return true
+        val wa = a.words
+        val wb = b.words
+        val shorter = minOf(wa.size, wb.size)
+        var common = 0
+        while (common < shorter && wa[common] == wb[common]) common++
+        // "cnn" / "cnn international"; or regional siblings like "cnn international latin america" /
+        // "cnn international north america" (2+ shared leading words covering half the shorter name).
+        return (common == shorter && a.name.length >= 2) || (common >= 2 && common * 2 >= shorter)
+    }
+
+    fun score(c: Channel, p: Profile, hasGuideNow: Boolean, playedOk: Boolean): Double =
+        score(c, p, hasGuideNow, playedOk, p.groups.values.maxOrNull() ?: 1.0, p.countries.values.maxOrNull() ?: 1.0)
+
+    private fun score(c: Channel, p: Profile, hasGuideNow: Boolean, playedOk: Boolean, maxG: Double, maxC: Double): Double {
         var s = c.groups.sumOf { (p.groups[it] ?: 0.0) / maxG }
         s += 0.9 * ((p.countries[c.country] ?: 0.0) / maxC)
         if (hasGuideNow) s += 0.45
@@ -75,25 +85,31 @@ object Recommender {
     ): List<HomeRow> {
         if (all.isEmpty()) return emptyList()
         val p = profile(recent, favorites, deviceCountry)
+        // Family names are worked out once per channel and only for channels actually looked at.
+        val familyCache = HashMap<String, Family>()
+        fun fam(c: Channel) = familyCache.getOrPut(c.id) { Family(family(c)) }
         val seen = (recent + favorites).map { it.id }.toHashSet()
-        val seenFamilies = (recent + favorites).map(::family)
+        val seenFamilies = (recent + favorites).map(::fam)
         val pool = all.filter { !isOffline(it) && it.id != exclude }
-        val scored = pool.associateWith { score(it, p, hasGuideNow(it), playedOk(it)) }
+        val maxG = p.groups.values.maxOrNull() ?: 1.0
+        val maxC = p.countries.values.maxOrNull() ?: 1.0
+        val scores = DoubleArray(pool.size) { score(pool[it], p, hasGuideNow(pool[it]), playedOk(pool[it]), maxG, maxC) }
 
         // Channels (and channel families) already used by rows above, so each row brings something new.
         val shown = HashSet<String>()
-        val shownFamilies = ArrayList<String>()
+        val shownFamilies = ArrayList<Family>()
 
+        // Walks the candidates in rank order and stops as soon as the row is full.
         fun pick(candidates: Sequence<Channel>, limit: Int = ROW_SIZE, perGroup: Int = Int.MAX_VALUE): List<Channel> {
-            val list = candidates.toList()
-            val families = ArrayList<String>()
+            val families = ArrayList<Family>()
             val groupCount = HashMap<String, Int>()
             val out = ArrayList<Channel>()
+            val inOut = HashSet<String>()
             fun take(allowShown: Boolean) {
-                for (c in list) {
+                for (c in candidates) {
                     if (out.size >= limit) return
-                    if (c in out || (!allowShown && c.id in shown)) continue
-                    val f = family(c)
+                    if (c.id in inOut || (!allowShown && c.id in shown)) continue
+                    val f = fam(c)
                     if (families.any { sameFamily(it, f) }) continue
                     if (!allowShown && shownFamilies.any { sameFamily(it, f) }) continue
                     val g = c.groups.firstOrNull() ?: "Other"
@@ -101,6 +117,7 @@ object Recommender {
                     families += f
                     groupCount.merge(g, 1, Int::plus)
                     out += c
+                    inOut += c.id
                 }
             }
             take(allowShown = false)
@@ -110,7 +127,8 @@ object Recommender {
             return out
         }
 
-        val ranked = pool.sortedByDescending { scored[it] ?: 0.0 }.asSequence() // sorted once, reused by every row
+        // Sorted once, reused by every row (a stable sort, so ties keep the playlist order).
+        val ranked = pool.indices.sortedByDescending { scores[it] }.map { pool[it] }.asSequence()
         val rows = ArrayList<HomeRow>()
 
         val visibleRecent = recent.filter { !isOffline(it) && it.id != exclude }
@@ -120,7 +138,7 @@ object Recommender {
         }
 
         // Personal picks: new channels and families only, and a mix of categories.
-        val forYou = pick(ranked.filter { c -> c.id !in seen && seenFamilies.none { sameFamily(it, family(c)) } }, perGroup = 6)
+        val forYou = pick(ranked.filter { c -> c.id !in seen && seenFamilies.none { sameFamily(it, fam(c)) } }, perGroup = 6)
         if (forYou.isNotEmpty()) {
             val why = if (recent.isEmpty() && favorites.isEmpty()) "Popular picks to get you started" else "Based on what you watch"
             rows += HomeRow("for-you", "Recommended for you", why, forYou)
