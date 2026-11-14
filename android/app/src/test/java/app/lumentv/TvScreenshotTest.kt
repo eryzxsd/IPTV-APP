@@ -49,6 +49,14 @@ class TvScreenshotTest {
         rule.mainClock.advanceTimeBy(250)
     }
 
+    /** Home through the side menu (Back on a menu screen now asks to exit). */
+    private fun goHome() {
+        // Left until the menu opens (screens with their own left-hand column take more than one press).
+        repeat(6) { if (rule.onAllNodesWithText("Home").fetchSemanticsNodes().isEmpty()) key(Key.DirectionLeft) }
+        clickText("Home")
+        rule.mainClock.advanceTimeBy(800)
+    }
+
     /** Back as the system delivers it when the screen doesn't handle the key itself. */
     private fun systemBack() {
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
@@ -108,11 +116,11 @@ class TvScreenshotTest {
         shot("tv-7-side-menu")
         clickText("All channels")
         shot("tv-8-browse")
-        systemBack()
+        goHome()
         key(Key.DirectionLeft)
         clickText("Search")
         shot("tv-9-search")
-        systemBack()
+        goHome()
         key(Key.DirectionLeft)
         clickText("TV guide")
         shot("tv-10-guide")
@@ -122,7 +130,7 @@ class TvScreenshotTest {
         key(Key.DirectionRight, 2) // later shows on the timeline
         key(Key.DirectionDown) // next channel
         shot("tv-10c-guide-moved")
-        systemBack()
+        goHome()
         rule.mainClock.advanceTimeBy(800)
         key(Key.DirectionCenter) // "Now playing" card -> player
         rule.mainClock.advanceTimeBy(500)
@@ -139,14 +147,14 @@ class TvScreenshotTest {
         rule.mainClock.advanceTimeBy(1_000)
         shot("tv-14-after-back")
 
-        // Side-menu screens are top level: Guide -> Search, then Back goes straight to Home.
-        key(Key.DirectionLeft)
-        clickText("TV guide")
+        // Back twice exits from any screen: the first Back stays (with a hint), the second closes the app.
         key(Key.DirectionLeft)
         clickText("Search")
         systemBack()
-        rule.mainClock.advanceTimeBy(800)
-        check(rule.onAllNodesWithText("Recommended for you").fetchSemanticsNodes().isNotEmpty()) { "Back from a menu screen goes to Home" }
-        shot("tv-15-back-to-home")
+        rule.mainClock.advanceTimeBy(500)
+        check(!rule.activity.isFinishing) { "one Back doesn't exit" }
+        check(rule.onAllNodesWithText("Quick searches").fetchSemanticsNodes().isNotEmpty()) { "still on Search after one Back" }
+        systemBack()
+        check(rule.activity.isFinishing) { "Back twice exits" }
     }
 }

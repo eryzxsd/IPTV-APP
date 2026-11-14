@@ -76,7 +76,8 @@ fun TvApp(vm: MainViewModel) {
     LaunchedEffect(stack.toList()) { saved.clear(); saved.addAll(stack.filter { it != TvScreen.Search && it != TvScreen.Browse }.map { it.name }) }
     val nav = remember { TvNav(stack) }
     val screen = stack.last()
-    BackHandler(enabled = nav.canGoBack) { nav.back() }
+    // The player goes back to where you came from; every other screen exits on Back twice (below).
+    BackHandler(enabled = screen == TvScreen.Player && nav.canGoBack) { nav.back() }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         if (TvScreen.Search in stack) {
             stack.remove(TvScreen.Search)
@@ -84,10 +85,11 @@ fun TvApp(vm: MainViewModel) {
         }
     }
 
-    // On Home, Back twice exits (a single press is easy to hit by accident).
+    // Back twice exits the app from any screen (a single press is easy to hit by accident).
+    // Pickers, dialogs and the player handle their own Back first.
     val context = LocalContext.current
     var lastBack by remember { mutableLongStateOf(0L) }
-    BackHandler(enabled = !nav.canGoBack) {
+    BackHandler(enabled = screen != TvScreen.Player) {
         val now = System.currentTimeMillis()
         if (now - lastBack < 2_500) (context as? Activity)?.finish()
         else {

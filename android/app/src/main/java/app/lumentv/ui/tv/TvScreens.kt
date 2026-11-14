@@ -1,5 +1,12 @@
 package app.lumentv.ui.tv
 
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import app.lumentv.ui.Filter
 import androidx.activity.compose.BackHandler
 import android.content.Intent
@@ -83,6 +90,7 @@ fun TvSearch(vm: MainViewModel, onPlay: (Channel) -> Unit, onOptions: (Channel) 
     val epg by vm.epg.collectAsStateWithLifecycle()
     val clock by vm.clock.collectAsStateWithLifecycle()
     val field = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
     LaunchedEffect(Unit) { field.requestWhenReady() }
     val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { query = it }
@@ -108,7 +116,12 @@ fun TvSearch(vm: MainViewModel, onPlay: (Channel) -> Unit, onOptions: (Channel) 
                 placeholder = { Text("Search channels, categories and programmes") },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { }),
-                modifier = Modifier.weight(1f).focusRequester(field),
+                // Left on an empty field reaches the side menu (otherwise it only moves the cursor).
+                modifier = Modifier.weight(1f).focusRequester(field).onPreviewKeyEvent {
+                    if (query.isEmpty() && it.type == KeyEventType.KeyDown && it.key == Key.DirectionLeft) {
+                        focusManager.moveFocus(FocusDirection.Left); true
+                    } else false
+                },
             )
             Spacer(Modifier.width(16.dp))
             TvButton("Voice", {
